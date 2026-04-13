@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["packages/framework-core", "example"]
+members = ["pypackages/framework-core", "example"]
 
 [dependency-groups]
 dev = [
