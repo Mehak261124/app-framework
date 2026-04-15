@@ -34,7 +34,7 @@ jobs:
       - name: Mypy
         run: uv run mypy pypackages/framework-core/src
       - name: Run Python tests
-        run: uv run pytest tests
+        run: uv run pytest pypackages/framework-core/tests
 
   typescript-quality:
     runs-on: ubuntu-latest
