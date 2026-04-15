@@ -15,6 +15,15 @@ export interface WireEvent {
 export type ChannelHandler = (event: WireEvent) => void;
 export type StatusListener = (status: ConnectionStatus) => void;
 
+/** Discriminator for the three WebSocket stream types. */
+export type StreamType = "data" | "log" | "control";
+
+/** Handler for ``stream="log"`` messages from the server. */
+export type LogHandler = (payload: unknown) => void;
+
+/** Handler for ``stream="control"`` messages from the server. */
+export type ControlHandler = (payload: unknown) => void;
+
 export interface WebSocketLike {
   onopen: ((event: Event) => void) | null;
   onmessage: ((event: MessageEvent) => void) | null;
@@ -113,6 +122,8 @@ export function coerceWireEvent(value: unknown): WireEvent | null {
  * Responsibilities:
  * - Maintains a single WebSocket connection and reconnects automatically.
  * - Multiplexes channel subscriptions over that connection.
+ * - Routes incoming messages by ``stream`` field: data → channel handlers,
+ *   log → log handlers, control → control handlers.
  * - Stores the last received message per channel so new subscribers receive
  *   it immediately (client-side replay, mirrors the backend behaviour).
  * - Exposes connection status to UI consumers via {@link onStatusChange}.
@@ -142,6 +153,9 @@ export class RealtimeEventBusClient {
   private readonly subscriptions = new Map<string, Set<ChannelHandler>>();
   /** exact channel → last received event */
   private readonly lastByChannel = new Map<string, WireEvent>();
+
+  private readonly logHandlers = new Set<LogHandler>();
+  private readonly controlHandlers = new Set<ControlHandler>();
 
   /**
    * Creates a websocket-backed event bus client.
@@ -323,6 +337,58 @@ export class RealtimeEventBusClient {
     this.sendJson({ action: "publish", channel, payload });
   }
 
+  /**
+   * Alias for {@link subscribe} — subscribe to ``stream="data"`` channel messages.
+   *
+   * @param channelPattern Glob-style subscription pattern.
+   * @param handler Callback invoked for matching events.
+   * @returns Function that unsubscribes this handler.
+   * @example
+   * ```ts
+   * const off = client.onData("sensor/*", (e) => console.log(e.payload));
+   * off();
+   * ```
+   */
+  public onData(channelPattern: string, handler: ChannelHandler): () => void {
+    return this.subscribe(channelPattern, handler);
+  }
+
+  /**
+   * Register a handler for ``stream="log"`` messages pushed by the server.
+   *
+   * @param handler Callback invoked with each log payload.
+   * @returns Function that unregisters this handler.
+   * @example
+   * ```ts
+   * const off = client.onLog((payload) => console.log("[log]", payload));
+   * off();
+   * ```
+   */
+  public onLog(handler: LogHandler): () => void {
+    this.logHandlers.add(handler);
+    return () => {
+      this.logHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Register a handler for ``stream="control"`` messages pushed by the server.
+   *
+   * @param handler Callback invoked with each control payload.
+   * @returns Function that unregisters this handler.
+   * @example
+   * ```ts
+   * const off = client.onControl((payload) => console.log("[control]", payload));
+   * off();
+   * ```
+   */
+  public onControl(handler: ControlHandler): () => void {
+    this.controlHandlers.add(handler);
+    return () => {
+      this.controlHandlers.delete(handler);
+    };
+  }
+
   private connect(): void {
     const socket = this.webSocketFactory(this.url);
     this.socket = socket;
@@ -336,18 +402,39 @@ export class RealtimeEventBusClient {
     };
 
     socket.onmessage = (event) => {
-      const parsed = this.parseMessage(event.data);
-      if (!parsed) {
+      const data = this.parseRawData(event.data);
+      if (data === null || typeof data !== "object") {
+        return;
+      }
+      const obj = data as Record<string, unknown>;
+      const stream = (obj.stream as StreamType | undefined) ?? "data";
+
+      if (stream === "log") {
+        for (const handler of this.logHandlers) {
+          handler(obj.payload);
+        }
         return;
       }
 
-      this.lastByChannel.set(parsed.channel, parsed);
+      if (stream === "control") {
+        for (const handler of this.controlHandlers) {
+          handler(obj.payload);
+        }
+        return;
+      }
+
+      // stream === "data" (or missing — backward compat)
+      const wireEvent = coerceWireEvent(data);
+      if (!wireEvent) {
+        return;
+      }
+      this.lastByChannel.set(wireEvent.channel, wireEvent);
       for (const [pattern, handlers] of this.subscriptions) {
-        if (!channelMatches(parsed.channel, pattern)) {
+        if (!channelMatches(wireEvent.channel, pattern)) {
           continue;
         }
         for (const handler of handlers) {
-          handler(parsed);
+          handler(wireEvent);
         }
       }
     };
@@ -374,10 +461,9 @@ export class RealtimeEventBusClient {
     };
   }
 
-  private parseMessage(raw: unknown): WireEvent | null {
+  private parseRawData(raw: unknown): unknown {
     try {
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return coerceWireEvent(parsed);
+      return typeof raw === "string" ? JSON.parse(raw) : raw;
     } catch {
       return null;
     }

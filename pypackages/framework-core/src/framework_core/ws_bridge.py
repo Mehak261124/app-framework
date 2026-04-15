@@ -5,6 +5,9 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from .bus import BaseEvent, EventBus, EventHandler
+from .control_stream import ControlStream
+from .log_stream import LogStream
+from .stream_types import StreamType
 
 
 class _ClientPublishEvent(BaseEvent):
@@ -20,13 +23,12 @@ class _ClientPublishEvent(BaseEvent):
 def _event_to_wire_message(channel: str, message: BaseEvent) -> dict[str, Any]:
     """Serialise ``message`` into the wire envelope format.
 
-    The envelope separates standard header fields (``message_id``,
-    ``timestamp``) from domain-specific payload fields so consumers on
-    both ends of the socket have a consistent structure to parse.
+    Now includes ``stream="data"`` so clients can route by stream type.
 
     Returns a dict of the shape::
 
         {
+            "stream": "data",
             "channel": "sensor/temperature",
             "headers": {"message_id": "...", "timestamp": 1712345678123},
             "payload": {"value": 22.5, "unit": "celsius"},
@@ -34,6 +36,7 @@ def _event_to_wire_message(channel: str, message: BaseEvent) -> dict[str, Any]:
     """
     payload = message.model_dump(exclude={"message_id", "timestamp"})
     return {
+        "stream": StreamType.data,
         "channel": channel,
         "headers": {
             "message_id": message.message_id,
@@ -43,14 +46,21 @@ def _event_to_wire_message(channel: str, message: BaseEvent) -> dict[str, Any]:
     }
 
 
-def _mount_ws_bridge(app: FastAPI, bus: EventBus) -> None:
+def _mount_ws_bridge(
+    app: FastAPI,
+    bus: EventBus,
+    log_stream: LogStream,
+    control_stream: ControlStream,
+) -> None:
     """Mount a multiplexed ``/ws`` WebSocket endpoint that bridges to ``bus``.
 
     Each connected client maintains its own subscription map.  All channel
     traffic for a single browser tab is multiplexed over one connection.
+    The connection is also registered with ``log_stream`` and
+    ``control_stream`` so those streams can broadcast to it.
 
-    Supported client actions
-    ------------------------
+    Supported client actions (stream="data" or no stream field)
+    -----------------------------------------------------------
     subscribe   – start receiving messages on *channel*; the last stored
                   message (if any) is sent immediately.
     unsubscribe – stop receiving messages on *channel*.
@@ -58,15 +68,24 @@ def _mount_ws_bridge(app: FastAPI, bus: EventBus) -> None:
                   including other connected WebSocket clients and any
                   backend consumers.
 
-    The handler passed to ``bus.subscribe`` is async, so ``EventBus`` must
-    schedule its invocation via ``asyncio.create_task`` to avoid blocking the
-    publish call and to guarantee that the replay on subscribe is actually
-    awaited (see ``EventBus.subscribe``).
+    Client messages with stream="log" or stream="control" are rejected;
+    those streams are server-push-only.
+
+    Args:
+        app: FastAPI application instance.
+        bus: Shared EventBus to subscribe/publish against.
+        log_stream: LogStream instance to register connections with.
+        control_stream: ControlStream instance to register connections with.
+
+    Returns:
+        None.
     """
 
     @app.websocket("/ws")
     async def websocket_bridge(websocket: WebSocket) -> None:
         await websocket.accept()
+        log_stream._register(websocket)
+        control_stream._register(websocket)
 
         # channel → handler mapping for this connection only
         subscriptions: dict[str, EventHandler] = {}
@@ -84,6 +103,23 @@ def _mount_ws_bridge(app: FastAPI, bus: EventBus) -> None:
                     await websocket.send_json({"error": "Invalid message format"})
                     continue
 
+                # Route by stream; default to "data" for backward compatibility
+                # with clients that omit the stream field.
+                stream = data.get("stream", StreamType.data)
+
+                if stream == StreamType.log:
+                    await websocket.send_json(
+                        {"error": "Log stream is server-push only"}
+                    )
+                    continue
+
+                if stream == StreamType.control:
+                    await websocket.send_json(
+                        {"error": "Control stream is server-push only"}
+                    )
+                    continue
+
+                # stream == "data": route by action
                 action = data.get("action")
                 channel = data.get("channel")
                 if not isinstance(action, str) or not isinstance(channel, str):
@@ -122,5 +158,7 @@ def _mount_ws_bridge(app: FastAPI, bus: EventBus) -> None:
         except WebSocketDisconnect:
             pass
         finally:
+            log_stream._deregister(websocket)
+            control_stream._deregister(websocket)
             for ch, handler in list(subscriptions.items()):
                 bus.unsubscribe(ch, handler)

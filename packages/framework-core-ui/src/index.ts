@@ -7,11 +7,16 @@ export {
 export { useChannel, toPayloadWithHeaders } from "./useChannel";
 export { usePublish } from "./usePublish";
 export { useEventBusStatus } from "./useEventBusStatus";
+export { useLogStream } from "./useLogStream";
+export { useControlStream } from "./useControlStream";
 export type {
   ConnectionStatus,
   EventHeaders,
   WireEvent,
   WebSocketFactory,
+  StreamType,
+  LogHandler,
+  ControlHandler,
 } from "./client";
 
 /**
