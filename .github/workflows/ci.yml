@@ -112,7 +112,7 @@ jobs:
         env:
           BACKEND_URL: http://127.0.0.1:8000
         run: |
-          .e2e-venv/bin/python -m uvicorn example.app:app --host 127.0.0.1 --port 8000 &
+          .e2e-venv/bin/python -m uvicorn examples.backend.main:app --host 127.0.0.1 --port 8000 &
           BACKEND_PID=$!
 
           cleanup() {

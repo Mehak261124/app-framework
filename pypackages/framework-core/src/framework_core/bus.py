@@ -1,20 +1,99 @@
+from __future__ import annotations
+
 import asyncio
-from typing import Any
+import fnmatch
+import uuid
+from collections.abc import Awaitable, Callable
+from time import time_ns
+
+from pydantic import BaseModel, Field
+
+EventHandler = Callable[["str", "BaseEvent"], Awaitable[None]]
+
+
+class BaseEvent(BaseModel):
+    """Base class for all framework events.
+
+    Provides standard header fields that are set automatically on instantiation.
+    Subclasses only need to define their domain-specific payload fields.
+
+    The ``message_id`` and ``timestamp`` fields mirror the wire-format envelope
+    ``headers`` object and the ``EventHeaders`` TypeScript interface.
+    """
+
+    message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    """Unique message identifier (UUID v4), auto-generated."""
+
+    timestamp: int = Field(default_factory=lambda: time_ns() // 1_000_000)
+    """Creation time in **milliseconds** since Unix epoch, auto-generated."""
 
 
 class EventBus:
+    """In-process pub/sub broker.
+
+    Design decisions
+    ----------------
+    - Consumers register **async handler callbacks** — no queue objects are
+      ever exposed.
+    - Channel routing uses ``fnmatch``-style glob patterns (e.g. ``sensor/*``,
+      ``*``).
+    - The bus stores the **last message per channel** so new subscribers
+      receive it immediately on subscribe.
+    - Messages are delivered in **publish order** — a more recent event is
+      never delivered before an older one on the same channel.
+    - Internal implementation details (storage, matching) are never visible to
+      framework consumers.
+    """
+
     def __init__(self) -> None:
-        self._queues: list[asyncio.Queue[dict[str, Any]]] = []
+        # pattern → list of handlers
+        self._subscriptions: dict[str, list[EventHandler]] = {}
+        # exact channel → last published message
+        self._last_by_channel: dict[str, tuple[str, BaseEvent]] = {}
 
-    def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._queues.append(queue)
-        return queue
+    def subscribe(self, channel: str, handler: EventHandler) -> None:
+        """Register ``handler`` for messages on channels matching ``channel``.
 
-    def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
-        if queue in self._queues:
-            self._queues.remove(queue)
+        ``channel`` supports fnmatch glob patterns (e.g. ``'sensor/*'``).
 
-    async def publish(self, message: dict[str, Any]) -> None:
-        if self._queues:
-            await asyncio.gather(*(q.put(message) for q in list(self._queues)))
+        If a last message exists for any channel matching the pattern, the
+        handler is scheduled as an ``asyncio.create_task`` so that the async
+        handler is properly awaited without blocking this synchronous method.
+        """
+        handlers = self._subscriptions.setdefault(channel, [])
+        handlers.append(handler)
+
+        # Replay any stored last messages whose channel matches the pattern.
+        for stored_channel, (_, message) in list(self._last_by_channel.items()):
+            if fnmatch.fnmatch(stored_channel, channel):
+                asyncio.get_event_loop().create_task(  # noqa: RUF006
+                    handler(stored_channel, message)  # type: ignore[arg-type]
+                )  # noqa: RUF006
+
+    def unsubscribe(self, channel: str, handler: EventHandler) -> None:
+        """Remove a previously registered handler.
+
+        No-op if the handler is not currently registered for ``channel``.
+        """
+        handlers = self._subscriptions.get(channel)
+        if handlers is None:
+            return
+        try:
+            handlers.remove(handler)
+        except ValueError:
+            pass
+        if not handlers:
+            del self._subscriptions[channel]
+
+    async def publish(self, channel: str, message: BaseEvent) -> None:
+        """Publish ``message`` to all handlers whose pattern matches ``channel``.
+
+        Stores ``message`` as the last message for ``channel``.
+        Handlers are called in subscription order.
+        """
+        self._last_by_channel[channel] = (channel, message)
+
+        for pattern, handlers in list(self._subscriptions.items()):
+            if fnmatch.fnmatch(channel, pattern):
+                for handler in list(handlers):
+                    await handler(channel, message)

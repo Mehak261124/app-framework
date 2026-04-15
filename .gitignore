@@ -12,11 +12,18 @@ __pycache__/
 # Node / frontend
 node_modules/
 packages/*/node_modules/
+examples/*/node_modules/
+
+# Compiled output — never commit these
 packages/*/dist/
-pypackages/*/dist/
+examples/frontend/dist/
 *.tsbuildinfo
+
+# Test & report artefacts
 playwright-report/
 test-results/
 
 # Tooling caches
 .cache/
+.e2e-venv/packages/framework-core-ui/dist
+uv.lock

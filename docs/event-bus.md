@@ -69,8 +69,9 @@ class BaseEvent(BaseModel):
     message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     """Unique message identifier (UUID v4), auto-generated."""
 
-    timestamp: int = Field(default_factory=lambda: time.time_ns() // 1000)
-    """Creation time in microseconds since Unix epoch, auto-generated."""
+    timestamp: int = Field(default_factory=lambda: time.time_ns() // 1_000_000)
+    """Creation time in milliseconds since Unix epoch, auto-generated."""
+
 ```
 
 Subclasses only define their specific fields:
@@ -98,7 +99,7 @@ The wire format over WebSocket follows this envelope, aligned with AsyncAPI conv
   "channel": "sensor/temperature",
   "headers": {
     "message_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-    "timestamp": 1712345678123456
+    "timestamp": 1712345678123
   },
   "payload": {
     "value": 22.5,
@@ -320,11 +321,9 @@ The provider derives the full WebSocket URL from the current page's host at runt
 Subscribes to a channel and returns the latest message. Supports wildcard patterns.
 
 ```tsx
-import { useChannel } from "@app-framework/core-ui";
+import { useChannel, type BaseEvent } from "@app-framework/core-ui";
 
-interface TemperatureReading {
-  message_id: string;
-  timestamp: number;
+interface TemperatureReading extends BaseEvent {
   value: number;
   unit: string;
 }
@@ -337,7 +336,11 @@ function TemperatureWidget() {
   // const data = useChannel<TemperatureReading>("sensor/*");
 
   if (!data) return <p>Waiting for data…</p>;
-  return <p>{data.value}°{data.unit}</p>;
+  return (
+    <p>
+      {data.value}°{data.unit}
+    </p>
+  );
 }
 ```
 
@@ -425,12 +428,21 @@ async def start_log_producer(bus: EventBus) -> None:
 // Example-app specific — lives in examples/, not framework-core-ui
 import { useChannel } from "@app-framework/core-ui";
 
-interface SineReading { message_id: string; timestamp: number; value: number; }
-interface LogEntry    { message_id: string; timestamp: number; level: string; message: string; }
+interface SineReading {
+  message_id: string;
+  timestamp: number;
+  value: number;
+}
+interface LogEntry {
+  message_id: string;
+  timestamp: number;
+  level: string;
+  message: string;
+}
 
 export function useSimulation() {
   const sine = useChannel<SineReading>("data/sine");
-  const log  = useChannel<LogEntry>("logs/app");
+  const log = useChannel<LogEntry>("logs/app");
   return { sine, log };
 }
 ```
@@ -439,17 +451,17 @@ export function useSimulation() {
 
 ## 6. Decisions Made
 
-| Topic | Decision |
-|---|---|
-| EventBus library | Custom implementation; facade pattern so internals can be swapped later (e.g. Zenoh) |
-| Wildcard subscriptions | Supported via `fnmatch` glob matching from the start |
-| Last message replay | New subscriber immediately receives the last message on matching channels |
-| Backend-initiated unsubscribe | Out of scope |
-| EventBusProvider config | Path only (`/ws`), not full URL |
-| `app.on_event` | Replaced with FastAPI `lifespan` context manager; task references kept |
-| Binary payloads | Future consideration (relevant for heavy simulation data) |
-| Authentication | Out of scope (local single-device deployment) |
-| Third-party library exposure | Internal libs (e.g. Zenoh) must never be visible to framework consumers |
+| Topic                         | Decision                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| EventBus library              | Custom implementation; facade pattern so internals can be swapped later (e.g. Zenoh) |
+| Wildcard subscriptions        | Supported via `fnmatch` glob matching from the start                                 |
+| Last message replay           | New subscriber immediately receives the last message on matching channels            |
+| Backend-initiated unsubscribe | Out of scope                                                                         |
+| EventBusProvider config       | Path only (`/ws`), not full URL                                                      |
+| `app.on_event`                | Replaced with FastAPI `lifespan` context manager; task references kept               |
+| Binary payloads               | Future consideration (relevant for heavy simulation data)                            |
+| Authentication                | Out of scope (local single-device deployment)                                        |
+| Third-party library exposure  | Internal libs (e.g. Zenoh) must never be visible to framework consumers              |
 
 ---
 

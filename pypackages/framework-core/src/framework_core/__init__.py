@@ -1,77 +1,51 @@
-import asyncio
-import math
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
 
 from .bus import EventBus
+from .ws_bridge import _mount_ws_bridge
 
 
-async def _demo_data_publisher(bus: EventBus) -> None:
-    t = 0
-    await bus.publish({"stream": "control", "event": "run_started"})
+def create_app(lifespan: Any = None) -> FastAPI:
+    """Create and return a configured FastAPI application.
 
-    while True:
-        value = math.sin(t * 0.1)
-        await bus.publish(
-            {"stream": "data", "channel": "sine.output", "value": value, "t": t}
-        )
+    Mounts the ``/ws`` WebSocket endpoint backed by a shared ``EventBus``.
+    The application's ``EventBus`` is accessible via ``app.state.bus``.
 
-        if t % 10 == 0:
-            await bus.publish({"stream": "log", "text": f"step {t} complete"})
+    Args:
+        lifespan: Optional async context manager for startup/shutdown hooks.
+                  It receives the ``FastAPI`` app instance and must be an
+                  ``@asynccontextmanager`` that yields once.  The framework
+                  sets ``app.state.bus`` *before* entering the custom lifespan,
+                  so the bus is always available when your hooks run.
 
-        t += 1
-        await asyncio.sleep(0.25)
+    Example::
 
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            tasks = [asyncio.create_task(start_producer(app.state.bus))]
+            yield
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    bus: EventBus = app.state.event_bus
-    app.state.publisher_task = asyncio.create_task(_demo_data_publisher(bus))
+        app = create_app(lifespan=lifespan)
+    """
+    bus = EventBus()
 
-    yield
+    @asynccontextmanager
+    async def _framework_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        app.state.bus = bus
+        if lifespan is not None:
+            async with lifespan(app):
+                yield
+        else:
+            yield
 
-    task: asyncio.Task[None] | None = app.state.publisher_task
-    if task is not None:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-
-def create_app() -> FastAPI:
-    app = FastAPI(lifespan=lifespan)
-    app.state.event_bus = EventBus()
-    app.state.publisher_task = None
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.websocket("/ws")
-    async def websocket_stream(websocket: WebSocket) -> None:
-        await websocket.accept()
-        queue = app.state.event_bus.subscribe()
-        try:
-            while True:
-                message: dict[str, Any] = await queue.get()
-                await websocket.send_json(message)
-        except WebSocketDisconnect:
-            pass
-        finally:
-            app.state.event_bus.unsubscribe(queue)
-
+    app = FastAPI(lifespan=_framework_lifespan)
+    _mount_ws_bridge(app, bus)
     return app
-
-
-app = create_app()
