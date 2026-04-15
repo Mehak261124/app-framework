@@ -86,7 +86,7 @@ jobs:
       - name: Build Python package
         run: |
           cd pypackages/framework-core
-          uv build
+          uv build --out-dir dist
 
       - name: Debug dist contents
         run: ls pypackages/framework-core/dist/

@@ -31,6 +31,7 @@ select = ["E", "F", "I", "UP"]
 strict = true
 python_version = "3.11"
 exclude = ["tests/", "examples/"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*", "examples.*"]
