@@ -10,8 +10,8 @@
     "build": "npm run build --workspaces --if-present",
     "format:check": "prettier --check .",
     "lint": "eslint packages examples/frontend",
-    "typecheck": "tsc -b examples/frontend/tsconfig.json",
-    "test:ui": "npm run test -w @app-framework/examples-frontend -- --run",
+    "typecheck": "tsc -b packages/framework-core-ui/tsconfig.json examples/frontend/tsconfig.json",
+    "test:ui": "npm run test -w @app-framework/core-ui -- --run && npm run test -w @app-framework/examples-frontend -- --run",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

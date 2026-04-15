@@ -63,8 +63,8 @@ describe("channel matching", () => {
     expect(channelMatches("logs/app", "*")).toBe(true);
   });
 
-  it("does not match partial segments without wildcard", () => {
-    expect(channelMatches("sensor/temperature/deep", "sensor/*")).toBe(false);
+  it("matches nested paths with fnmatch-style wildcard semantics", () => {
+    expect(channelMatches("sensor/temperature/deep", "sensor/*")).toBe(true);
   });
 
   it("escapes regex special chars in pattern literals", () => {

@@ -23,6 +23,10 @@ def create_app(lifespan: Any = None) -> FastAPI:
                   sets ``app.state.bus`` *before* entering the custom lifespan,
                   so the bus is always available when your hooks run.
 
+    Returns:
+        Configured ``FastAPI`` application with a shared ``EventBus`` and
+        websocket bridge mounted at ``/ws``.
+
     Example::
 
         @asynccontextmanager
@@ -47,5 +51,15 @@ def create_app(lifespan: Any = None) -> FastAPI:
             yield
 
     app = FastAPI(lifespan=_framework_lifespan)
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        """Return a lightweight process-health response for checks/tests.
+
+        Returns:
+            Mapping containing ``{\"status\": \"ok\"}``.
+        """
+        return {"status": "ok"}
+
     _mount_ws_bridge(app, bus)
     return app

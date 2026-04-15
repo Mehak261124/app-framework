@@ -46,24 +46,21 @@ const WS_OPEN = 1;
  * unambiguous.
  */
 function globToRegex(pattern: string): RegExp {
-  const escaped = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\+/g, "\\+")
-    .replace(/\^/g, "\\^")
-    .replace(/\$/g, "\\$")
-    .replace(/\{/g, "\\{")
-    .replace(/\}/g, "\\}")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
-    .replace(/\|/g, "\\|")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/\\/g, "\\\\")
-    .replace(/\*/g, ".*");
+  const escaped = pattern.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*");
   return new RegExp(`^${escaped}$`);
 }
 
-/** Returns true when ``channel`` matches the fnmatch-style ``pattern``. */
+/**
+ * Returns whether a concrete channel matches a glob-style pattern.
+ *
+ * @param channel Concrete channel name.
+ * @param pattern Pattern supporting `*` wildcard matching.
+ * @returns `true` when `channel` matches `pattern`, otherwise `false`.
+ * @example
+ * ```ts
+ * channelMatches("sensor/temperature", "sensor/*"); // true
+ * ```
+ */
 export function channelMatches(channel: string, pattern: string): boolean {
   return globToRegex(pattern).test(channel);
 }
@@ -73,6 +70,17 @@ export function channelMatches(channel: string, pattern: string): boolean {
  *
  * Returns ``null`` for any value that does not conform to the wire format
  * so callers can safely discard malformed messages.
+ *
+ * @param value Unknown incoming value from websocket message parsing.
+ * @returns A validated `WireEvent`, or `null` when the value is invalid.
+ * @example
+ * ```ts
+ * const parsed = coerceWireEvent({
+ *   channel: "sensor/temperature",
+ *   headers: { message_id: "id-1", timestamp: 123 },
+ *   payload: { value: 21.2 },
+ * });
+ * ```
  */
 export function coerceWireEvent(value: unknown): WireEvent | null {
   if (typeof value !== "object" || value === null) {
@@ -108,6 +116,15 @@ export function coerceWireEvent(value: unknown): WireEvent | null {
  * - Stores the last received message per channel so new subscribers receive
  *   it immediately (client-side replay, mirrors the backend behaviour).
  * - Exposes connection status to UI consumers via {@link onStatusChange}.
+ *
+ * @example
+ * ```ts
+ * const client = new RealtimeEventBusClient("ws://localhost:8000/ws");
+ * client.start();
+ * const off = client.subscribe("sensor/*", (event) => console.log(event));
+ * off();
+ * client.stop();
+ * ```
  */
 export class RealtimeEventBusClient {
   private readonly url: string;
@@ -126,6 +143,13 @@ export class RealtimeEventBusClient {
   /** exact channel → last received event */
   private readonly lastByChannel = new Map<string, WireEvent>();
 
+  /**
+   * Creates a websocket-backed event bus client.
+   *
+   * @param url Absolute websocket URL.
+   * @param options Optional reconnect and websocket-factory options.
+   * @returns New `RealtimeEventBusClient` instance.
+   */
   constructor(url: string, options: ClientOptions = {}) {
     this.url = url;
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1000;
@@ -133,7 +157,15 @@ export class RealtimeEventBusClient {
       options.webSocketFactory ?? ((wsUrl) => new WebSocket(wsUrl));
   }
 
-  /** Open the WebSocket connection. Safe to call multiple times (idempotent). */
+  /**
+   * Opens the websocket connection.
+   *
+   * @returns Nothing.
+   * @example
+   * ```ts
+   * client.start();
+   * ```
+   */
   public start(): void {
     if (!this.stopped) {
       return;
@@ -143,7 +175,15 @@ export class RealtimeEventBusClient {
     this.connect();
   }
 
-  /** Close the connection and cancel any pending reconnect. */
+  /**
+   * Closes the websocket and cancels pending reconnect attempts.
+   *
+   * @returns Nothing.
+   * @example
+   * ```ts
+   * client.stop();
+   * ```
+   */
   public stop(): void {
     this.stopped = true;
     if (this.reconnectTimer !== null) {
@@ -155,7 +195,15 @@ export class RealtimeEventBusClient {
     this.setStatus("disconnected");
   }
 
-  /** Current connection status. */
+  /**
+   * Returns the current connection status.
+   *
+   * @returns Current connection status enum value.
+   * @example
+   * ```ts
+   * const status = client.getStatus();
+   * ```
+   */
   public getStatus(): ConnectionStatus {
     return this.status;
   }
@@ -165,6 +213,14 @@ export class RealtimeEventBusClient {
    *
    * The listener is called immediately with the current status on registration.
    * Returns an unsubscribe function.
+   *
+   * @param listener Callback invoked with each status change.
+   * @returns Function that unsubscribes the status listener.
+   * @example
+   * ```ts
+   * const off = client.onStatusChange((status) => console.log(status));
+   * off();
+   * ```
    */
   public onStatusChange(listener: StatusListener): () => void {
     this.statusListeners.add(listener);
@@ -183,7 +239,14 @@ export class RealtimeEventBusClient {
    * - Immediately delivers any stored last messages that match the pattern
    *   (client-side replay).
    *
-   * Returns an unsubscribe function.
+   * @param channelPattern Glob-style subscription pattern.
+   * @param handler Callback invoked for matching events.
+   * @returns Function that unsubscribes this handler.
+   * @example
+   * ```ts
+   * const off = client.subscribe("logs/*", (event) => console.log(event.payload));
+   * off();
+   * ```
    */
   public subscribe(channelPattern: string, handler: ChannelHandler): () => void {
     const handlers =
@@ -214,6 +277,14 @@ export class RealtimeEventBusClient {
    *
    * Sends an ``unsubscribe`` action to the server when the last handler for a
    * pattern is removed.
+   *
+   * @param channelPattern Glob-style subscription pattern.
+   * @param handler Previously subscribed handler.
+   * @returns Nothing.
+   * @example
+   * ```ts
+   * client.unsubscribe("sensor/*", handler);
+   * ```
    */
   public unsubscribe(channelPattern: string, handler: ChannelHandler): void {
     const handlers = this.subscriptions.get(channelPattern);
@@ -236,6 +307,14 @@ export class RealtimeEventBusClient {
    * Publish ``payload`` to ``channel`` via the server.
    *
    * No-op when the socket is not open.
+   *
+   * @param channel Target channel.
+   * @param payload JSON-serializable payload.
+   * @returns Nothing.
+   * @example
+   * ```ts
+   * client.publish("commands/reset", { target: "sensor-1" });
+   * ```
    */
   public publish(channel: string, payload: unknown): void {
     if (!this.isSocketOpen()) {

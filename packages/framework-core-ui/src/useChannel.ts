@@ -14,6 +14,17 @@ import type { WireEvent } from "./client";
  *
  * Header fields win over any same-named key in the payload (should never
  * occur in practice with well-typed producers).
+ *
+ * @param event Wire-format event containing channel, headers, and payload.
+ * @returns Payload object augmented with `message_id` and `timestamp`.
+ * @example
+ * ```ts
+ * const merged = toPayloadWithHeaders<{ value: number; message_id: string; timestamp: number }>({
+ *   channel: "sensor/temperature",
+ *   headers: { message_id: "id-1", timestamp: 123 },
+ *   payload: { value: 22.5 },
+ * });
+ * ```
  */
 export function toPayloadWithHeaders<T>(event: WireEvent): T {
   const payload = event.payload;
@@ -39,6 +50,9 @@ export function toPayloadWithHeaders<T>(event: WireEvent): T {
  * are typed.  Returns ``null`` before the first message arrives.
  *
  * Supports fnmatch-style glob patterns (e.g. ``"sensor/*"``).
+ *
+ * @param channel Channel name or glob pattern to subscribe to.
+ * @returns Latest message for the channel pattern, or `null` before first event.
  *
  * @example
  * ```ts

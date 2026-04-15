@@ -46,19 +46,29 @@ class EventBus:
     """
 
     def __init__(self) -> None:
+        """Initialise empty subscription and replay stores.
+
+        Returns:
+            None.
+        """
         # pattern → list of handlers
         self._subscriptions: dict[str, list[EventHandler]] = {}
         # exact channel → last published message
         self._last_by_channel: dict[str, tuple[str, BaseEvent]] = {}
 
     def subscribe(self, channel: str, handler: EventHandler) -> None:
-        """Register ``handler`` for messages on channels matching ``channel``.
+        """Register a handler for channels matching a glob pattern.
 
-        ``channel`` supports fnmatch glob patterns (e.g. ``'sensor/*'``).
+        `channel` supports `fnmatch` glob patterns (for example, ``sensor/*``).
+        If replay data exists for matching channels, the handler is scheduled
+        immediately through `asyncio.create_task`.
 
-        If a last message exists for any channel matching the pattern, the
-        handler is scheduled as an ``asyncio.create_task`` so that the async
-        handler is properly awaited without blocking this synchronous method.
+        Args:
+            channel: Subscription channel pattern.
+            handler: Async callback receiving ``(channel, message)``.
+
+        Returns:
+            None.
         """
         handlers = self._subscriptions.setdefault(channel, [])
         handlers.append(handler)
@@ -71,9 +81,14 @@ class EventBus:
                 )  # noqa: RUF006
 
     def unsubscribe(self, channel: str, handler: EventHandler) -> None:
-        """Remove a previously registered handler.
+        """Remove a previously registered handler for a pattern.
 
-        No-op if the handler is not currently registered for ``channel``.
+        Args:
+            channel: Subscription channel pattern used during subscribe.
+            handler: Handler function to remove.
+
+        Returns:
+            None. This method is a no-op if the handler is not registered.
         """
         handlers = self._subscriptions.get(channel)
         if handlers is None:
@@ -86,10 +101,17 @@ class EventBus:
             del self._subscriptions[channel]
 
     async def publish(self, channel: str, message: BaseEvent) -> None:
-        """Publish ``message`` to all handlers whose pattern matches ``channel``.
+        """Publish an event to all handlers whose pattern matches a channel.
 
-        Stores ``message`` as the last message for ``channel``.
-        Handlers are called in subscription order.
+        The message is saved as replay state for the exact channel and then
+        delivered to matching handlers in subscription order.
+
+        Args:
+            channel: Concrete channel to publish to.
+            message: Event payload object.
+
+        Returns:
+            None.
         """
         self._last_by_channel[channel] = (channel, message)
 
