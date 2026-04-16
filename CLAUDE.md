@@ -39,11 +39,11 @@
 
 Every message on the `/ws` WebSocket connection carries a `stream` discriminator:
 
-| Stream | Direction | Shape |
-|--------|-----------|-------|
-| `data` | both | `{ "stream": "data", "channel": "…", "headers": { "message_id": "…", "timestamp": 123 }, "payload": {…} }` |
-| `log` | server→client only | `{ "stream": "log", "payload": "text" }` |
-| `control` | server→client only | `{ "stream": "control", "payload": { "type": "heartbeat"\|"status", … } }` |
+| Stream    | Direction          | Shape                                                                                                      |
+| --------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `data`    | both               | `{ "stream": "data", "channel": "…", "headers": { "message_id": "…", "timestamp": 123 }, "payload": {…} }` |
+| `log`     | server→client only | `{ "stream": "log", "payload": "text" }`                                                                   |
+| `control` | server→client only | `{ "stream": "control", "payload": { "type": "heartbeat"\|"status", … } }`                                 |
 
 **Client → Server** messages for the `data` stream use the existing action format (`subscribe`, `unsubscribe`, `publish`). The `stream` field is optional on inbound messages and defaults to `"data"` for backward compatibility. Clients sending `stream="log"` or `stream="control"` receive an error — those streams are server-push-only.
 

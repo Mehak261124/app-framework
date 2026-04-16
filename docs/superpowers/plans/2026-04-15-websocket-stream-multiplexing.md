@@ -13,6 +13,7 @@
 ## Wire Format Reference
 
 **Server → Client:**
+
 ```json
 { "stream": "data",    "channel": "sensor/temp", "headers": {"message_id":"…","timestamp":123}, "payload": {…} }
 { "stream": "log",     "payload": "text message" }
@@ -20,11 +21,13 @@
 ```
 
 **Client → Server (unchanged — backward compat):**
+
 ```json
 { "action": "subscribe",   "channel": "sensor/temp" }
 { "action": "unsubscribe", "channel": "sensor/temp" }
 { "action": "publish",     "channel": "sensor/temp", "payload": {…} }
 ```
+
 Incoming messages with an explicit `stream` field other than `"data"` return an error (log/control are server→client only).
 
 ---
@@ -32,6 +35,7 @@ Incoming messages with an explicit `stream` field other than `"data"` return an 
 ## File Map
 
 **Create (Python):**
+
 - `pypackages/framework-core/src/framework_core/stream_types.py` — `StreamType` enum + `WireMessage` Pydantic model
 - `pypackages/framework-core/src/framework_core/log_stream.py` — `LogStream` class
 - `pypackages/framework-core/src/framework_core/control_stream.py` — `ControlStream` class
@@ -41,20 +45,24 @@ Incoming messages with an explicit `stream` field other than `"data"` return an 
 - `pypackages/framework-core/tests/test_streams_integration.py`
 
 **Modify (Python):**
+
 - `pypackages/framework-core/src/framework_core/ws_bridge.py` — add stream routing + connection registry
 - `pypackages/framework-core/src/framework_core/__init__.py` — create/expose LogStream + ControlStream
 - `examples/backend/main.py` — demo all 3 streams
 
 **Create (TypeScript):**
+
 - `packages/framework-core-ui/src/useLogStream.ts`
 - `packages/framework-core-ui/src/useControlStream.ts`
 - `packages/framework-core-ui/src/stream_hooks.test.tsx`
 
 **Modify (TypeScript):**
+
 - `packages/framework-core-ui/src/client.ts` — add stream routing, `onData`/`onLog`/`onControl`
 - `packages/framework-core-ui/src/index.ts` — export new hooks and types
 
 **Modify (Docs):**
+
 - `CLAUDE.md` — add wire format and stream types section
 
 ---
@@ -62,6 +70,7 @@ Incoming messages with an explicit `stream` field other than `"data"` return an 
 ## Task 1: Python — `stream_types.py`
 
 **Files:**
+
 - Create: `pypackages/framework-core/src/framework_core/stream_types.py`
 - Test: `pypackages/framework-core/tests/test_stream_types.py`
 
@@ -115,6 +124,7 @@ def test_wire_message_control_serialises() -> None:
 ```
 uv run pytest pypackages/framework-core/tests/test_stream_types.py -v
 ```
+
 Expected: `ModuleNotFoundError: No module named 'framework_core.stream_types'`
 
 - [ ] **Step 3: Implement `stream_types.py`**
@@ -165,6 +175,7 @@ class WireMessage(BaseModel):
 ```
 uv run pytest pypackages/framework-core/tests/test_stream_types.py -v
 ```
+
 Expected: `4 passed`
 
 ---
@@ -172,6 +183,7 @@ Expected: `4 passed`
 ## Task 2: Python — `log_stream.py`
 
 **Files:**
+
 - Create: `pypackages/framework-core/src/framework_core/log_stream.py`
 - Test: `pypackages/framework-core/tests/test_log_stream.py`
 
@@ -245,6 +257,7 @@ async def test_log_with_no_connections_is_a_no_op() -> None:
 ```
 uv run pytest pypackages/framework-core/tests/test_log_stream.py -v
 ```
+
 Expected: `ModuleNotFoundError: No module named 'framework_core.log_stream'`
 
 - [ ] **Step 3: Implement `log_stream.py`**
@@ -318,6 +331,7 @@ class LogStream:
 ```
 uv run pytest pypackages/framework-core/tests/test_log_stream.py -v
 ```
+
 Expected: `4 passed`
 
 ---
@@ -325,6 +339,7 @@ Expected: `4 passed`
 ## Task 3: Python — `control_stream.py`
 
 **Files:**
+
 - Create: `pypackages/framework-core/src/framework_core/control_stream.py`
 - Test: `pypackages/framework-core/tests/test_control_stream.py`
 
@@ -416,6 +431,7 @@ async def test_heartbeat_sends_control_message_with_timestamp() -> None:
 ```
 uv run pytest pypackages/framework-core/tests/test_control_stream.py -v
 ```
+
 Expected: `ModuleNotFoundError: No module named 'framework_core.control_stream'`
 
 - [ ] **Step 3: Implement `control_stream.py`**
@@ -517,6 +533,7 @@ class ControlStream:
 ```
 uv run pytest pypackages/framework-core/tests/test_control_stream.py -v
 ```
+
 Expected: `4 passed`
 
 ---
@@ -524,9 +541,11 @@ Expected: `4 passed`
 ## Task 4: Python — Update `ws_bridge.py`
 
 **Files:**
+
 - Modify: `pypackages/framework-core/src/framework_core/ws_bridge.py`
 
 Three changes:
+
 1. `_event_to_wire_message` adds `"stream": "data"` to outgoing data envelopes.
 2. `_mount_ws_bridge` accepts `log_stream` and `control_stream` and registers/deregisters them per connection.
 3. Incoming messages with `stream != "data"` return an error (log/control are server-push-only).
@@ -706,6 +725,7 @@ def _mount_ws_bridge(
 ```
 uv run pytest pypackages/framework-core/tests/ -v
 ```
+
 Expected: all previously passing tests still pass (existing ws_bridge tests will pass because backward-compat default keeps `stream` optional on incoming messages).
 
 **Note:** The existing ws_bridge tests send messages without a `stream` field — they default to `"data"`, so subscribe/publish/unsubscribe still work. Assertions on `received["channel"]` and `received["payload"]` still pass; tests that don't check `received["stream"]` are unaffected.
@@ -715,6 +735,7 @@ Expected: all previously passing tests still pass (existing ws_bridge tests will
 ## Task 5: Python — Update `__init__.py`
 
 **Files:**
+
 - Modify: `pypackages/framework-core/src/framework_core/__init__.py`
 
 - [ ] **Step 1: Replace `__init__.py` with the updated version**
@@ -805,6 +826,7 @@ def create_app(lifespan: Any = None) -> FastAPI:
 ```
 uv run pytest pypackages/framework-core/tests/ -v
 ```
+
 Expected: all previously passing tests still pass.
 
 ---
@@ -812,6 +834,7 @@ Expected: all previously passing tests still pass.
 ## Task 6: Python — Integration tests for all three streams
 
 **Files:**
+
 - Create: `pypackages/framework-core/tests/test_streams_integration.py`
 
 - [ ] **Step 1: Write the integration tests**
@@ -928,6 +951,7 @@ def test_create_app_exposes_log_stream_and_control_stream() -> None:
 ```
 uv run pytest pypackages/framework-core/tests/test_streams_integration.py -v
 ```
+
 Expected: `5 passed`
 
 - [ ] **Step 3: Run the full Python test suite**
@@ -935,6 +959,7 @@ Expected: `5 passed`
 ```
 uv run pytest pypackages/framework-core/tests/ -v
 ```
+
 Expected: all tests pass (15 pre-existing + new ones).
 
 ---
@@ -942,6 +967,7 @@ Expected: all tests pass (15 pre-existing + new ones).
 ## Task 7: Python — Update `examples/backend/main.py`
 
 **Files:**
+
 - Modify: `examples/backend/main.py`
 
 - [ ] **Step 1: Update `main.py` to demonstrate all 3 streams**
@@ -1003,6 +1029,7 @@ app = create_app(lifespan=lifespan)
 ```
 uv run pytest pypackages/framework-core/tests/ -q
 ```
+
 Expected: all tests pass.
 
 ---
@@ -1010,9 +1037,11 @@ Expected: all tests pass.
 ## Task 8: TypeScript — Update `client.ts`
 
 **Files:**
+
 - Modify: `packages/framework-core-ui/src/client.ts`
 
 Three changes:
+
 1. Add `StreamType`, `LogHandler`, `ControlHandler` exports.
 2. Add private `logHandlers` and `controlHandlers` sets to `RealtimeEventBusClient`.
 3. Refactor `onmessage` to route by `stream` field; add `onData`, `onLog`, `onControl` methods.
@@ -1041,47 +1070,49 @@ After the `private readonly lastByChannel` line (~line 144), add:
 Replace the entire `private parseMessage` method and the `socket.onmessage` handler inside `connect()`:
 
 The new `socket.onmessage` (inside `connect()`):
+
 ```ts
-    socket.onmessage = (event) => {
-      const data = this.parseRawData(event.data);
-      if (data === null || typeof data !== "object" || data === null) {
-        return;
-      }
-      const obj = data as Record<string, unknown>;
-      const stream = (obj.stream as StreamType | undefined) ?? "data";
+socket.onmessage = (event) => {
+  const data = this.parseRawData(event.data);
+  if (data === null || typeof data !== "object" || data === null) {
+    return;
+  }
+  const obj = data as Record<string, unknown>;
+  const stream = (obj.stream as StreamType | undefined) ?? "data";
 
-      if (stream === "log") {
-        for (const handler of this.logHandlers) {
-          handler(obj.payload);
-        }
-        return;
-      }
+  if (stream === "log") {
+    for (const handler of this.logHandlers) {
+      handler(obj.payload);
+    }
+    return;
+  }
 
-      if (stream === "control") {
-        for (const handler of this.controlHandlers) {
-          handler(obj.payload);
-        }
-        return;
-      }
+  if (stream === "control") {
+    for (const handler of this.controlHandlers) {
+      handler(obj.payload);
+    }
+    return;
+  }
 
-      // stream === "data" (or missing — backward compat)
-      const wireEvent = coerceWireEvent(data);
-      if (!wireEvent) {
-        return;
-      }
-      this.lastByChannel.set(wireEvent.channel, wireEvent);
-      for (const [pattern, handlers] of this.subscriptions) {
-        if (!channelMatches(wireEvent.channel, pattern)) {
-          continue;
-        }
-        for (const handler of handlers) {
-          handler(wireEvent);
-        }
-      }
-    };
+  // stream === "data" (or missing — backward compat)
+  const wireEvent = coerceWireEvent(data);
+  if (!wireEvent) {
+    return;
+  }
+  this.lastByChannel.set(wireEvent.channel, wireEvent);
+  for (const [pattern, handlers] of this.subscriptions) {
+    if (!channelMatches(wireEvent.channel, pattern)) {
+      continue;
+    }
+    for (const handler of handlers) {
+      handler(wireEvent);
+    }
+  }
+};
 ```
 
 New private helper (replaces old `parseMessage`):
+
 ```ts
   private parseRawData(raw: unknown): unknown {
     try {
@@ -1094,7 +1125,7 @@ New private helper (replaces old `parseMessage`):
 
 - [ ] **Step 4: Add `onData`, `onLog`, `onControl` public methods** (after `publish`):
 
-```ts
+````ts
   /**
    * Alias for {@link subscribe} — subscribe to stream="data" channel messages.
    *
@@ -1146,13 +1177,14 @@ New private helper (replaces old `parseMessage`):
       this.controlHandlers.delete(handler);
     };
   }
-```
+````
 
 - [ ] **Step 5: Run existing TypeScript tests to verify nothing broke**
 
 ```
 npm run test:ui
 ```
+
 Expected: all 26 existing tests pass. The existing `hooks.test.tsx` tests send wire messages without a `stream` field — they default to `"data"` and route to channel handlers as before.
 
 ---
@@ -1160,6 +1192,7 @@ Expected: all 26 existing tests pass. The existing `hooks.test.tsx` tests send w
 ## Task 9: TypeScript — `useLogStream.ts` + tests
 
 **Files:**
+
 - Create: `packages/framework-core-ui/src/useLogStream.ts`
 - Create: `packages/framework-core-ui/src/stream_hooks.test.tsx` (start with log stream test)
 
@@ -1281,11 +1314,12 @@ describe("stream hooks", () => {
 ```
 npm run test:ui -- stream_hooks
 ```
+
 Expected: `Cannot find module './useLogStream'`
 
 - [ ] **Step 3: Implement `useLogStream.ts`**
 
-```ts
+````ts
 // packages/framework-core-ui/src/useLogStream.ts
 import { useEffect, useState } from "react";
 
@@ -1317,13 +1351,14 @@ export function useLogStream(): unknown {
 
   return latest;
 }
-```
+````
 
 - [ ] **Step 4: Run to verify log stream test passes**
 
 ```
 npm run test:ui -- stream_hooks
 ```
+
 Expected: log stream tests pass.
 
 ---
@@ -1331,6 +1366,7 @@ Expected: log stream tests pass.
 ## Task 10: TypeScript — `useControlStream.ts` + remaining tests
 
 **Files:**
+
 - Create: `packages/framework-core-ui/src/useControlStream.ts`
 - Modify: `packages/framework-core-ui/src/stream_hooks.test.tsx` (add remaining tests)
 
@@ -1476,11 +1512,12 @@ Add inside the `describe("stream hooks")` block, after the log tests:
 ```
 npm run test:ui -- stream_hooks
 ```
+
 Expected: `Cannot find module './useControlStream'`
 
 - [ ] **Step 3: Implement `useControlStream.ts`**
 
-```ts
+````ts
 // packages/framework-core-ui/src/useControlStream.ts
 import { useEffect, useState } from "react";
 
@@ -1515,13 +1552,14 @@ export function useControlStream(): unknown {
 
   return latest;
 }
-```
+````
 
 - [ ] **Step 4: Run all TypeScript tests**
 
 ```
 npm run test:ui
 ```
+
 Expected: all tests pass (26 existing + new stream hook tests).
 
 ---
@@ -1529,11 +1567,12 @@ Expected: all tests pass (26 existing + new stream hook tests).
 ## Task 11: TypeScript — Update `index.ts` exports
 
 **Files:**
+
 - Modify: `packages/framework-core-ui/src/index.ts`
 
 - [ ] **Step 1: Add exports for new hooks and types**
 
-```ts
+````ts
 // packages/framework-core-ui/src/index.ts
 export {
   EventBusProvider,
@@ -1577,13 +1616,14 @@ export interface BaseEvent {
   /** Milliseconds since Unix epoch. */
   timestamp: number;
 }
-```
+````
 
 - [ ] **Step 2: Run TypeScript typecheck and tests**
 
 ```
 npm run typecheck && npm run test:ui
 ```
+
 Expected: 0 errors, all tests pass.
 
 ---
@@ -1591,6 +1631,7 @@ Expected: 0 errors, all tests pass.
 ## Task 12: Documentation — Update `CLAUDE.md`
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 
 - [ ] **Step 1: Add wire format and stream types section**
@@ -1602,11 +1643,11 @@ In `CLAUDE.md`, after the `## Project Structure` section (before `## Key Entry P
 
 Every message on the `/ws` WebSocket connection carries a `stream` discriminator:
 
-| Stream | Direction | Shape |
-|--------|-----------|-------|
-| `data` | both | `{ "stream": "data", "channel": "…", "headers": { "message_id": "…", "timestamp": 123 }, "payload": {…} }` |
-| `log` | server→client only | `{ "stream": "log", "payload": "text" }` |
-| `control` | server→client only | `{ "stream": "control", "payload": { "type": "heartbeat"\|"status", … } }` |
+| Stream    | Direction          | Shape                                                                                                      |
+| --------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `data`    | both               | `{ "stream": "data", "channel": "…", "headers": { "message_id": "…", "timestamp": 123 }, "payload": {…} }` |
+| `log`     | server→client only | `{ "stream": "log", "payload": "text" }`                                                                   |
+| `control` | server→client only | `{ "stream": "control", "payload": { "type": "heartbeat"\|"status", … } }`                                 |
 
 **Client → Server** messages for the `data` stream continue to use the existing action format (`subscribe`, `unsubscribe`, `publish`). The `stream` field is optional on inbound messages and defaults to `"data"` for backward compatibility.
 
@@ -1628,16 +1669,16 @@ Every message on the `/ws` WebSocket connection carries a `stream` discriminator
 Also update the `## Project Structure` Python section to list the new files:
 
 ```markdown
-  - `src/framework_core/stream_types.py`: `StreamType` enum and `WireMessage` wire model.
-  - `src/framework_core/log_stream.py`: `LogStream` — broadcast log entries over WebSocket.
-  - `src/framework_core/control_stream.py`: `ControlStream` — broadcast heartbeat/status over WebSocket.
+- `src/framework_core/stream_types.py`: `StreamType` enum and `WireMessage` wire model.
+- `src/framework_core/log_stream.py`: `LogStream` — broadcast log entries over WebSocket.
+- `src/framework_core/control_stream.py`: `ControlStream` — broadcast heartbeat/status over WebSocket.
 ```
 
 And the TypeScript section:
 
 ```markdown
-  - `src/useLogStream.ts`: `useLogStream` hook for stream="log" messages.
-  - `src/useControlStream.ts`: `useControlStream` hook for stream="control" messages.
+- `src/useLogStream.ts`: `useLogStream` hook for stream="log" messages.
+- `src/useControlStream.ts`: `useControlStream` hook for stream="control" messages.
 ```
 
 - [ ] **Step 2: Run the full quality bar one final time**
@@ -1650,30 +1691,31 @@ npm run lint
 npm run typecheck
 npm run test:ui
 ```
+
 Expected: all clean. Report results to user.
 
 ---
 
 ## Self-Review Against Spec
 
-| Spec Requirement | Task |
-|-----------------|------|
-| `StreamType` enum: data, log, control | Task 1 |
-| `WireMessage` Pydantic model | Task 1 |
-| ws_bridge routes by stream field | Task 4 |
-| EventBus tags outgoing with stream="data" | Task 4 |
-| `LogStream` — captures text, publishes as log | Task 2 |
-| `ControlStream` — heartbeat + status as control | Task 3 |
-| Python tests for all of the above | Tasks 1–3, 6 |
-| All 15 existing Python tests pass | Tasks 4–5 verify |
-| TS client routes by stream | Task 8 |
-| `onData()`, `onLog()`, `onControl()` | Task 8 |
-| `useChannel` only processes stream=data | Task 8 (client routing), Task 10 (test) |
-| `useLogStream` hook + tests | Tasks 9–10 |
-| `useControlStream` hook + tests | Task 10 |
-| All 26 existing TS tests pass | Tasks 8–10 verify |
-| `examples/backend/main.py` shows all 3 | Task 7 |
-| `CLAUDE.md` updated | Task 12 |
-| JSDoc on new TS hooks | Tasks 9–10 |
-| Docstrings on new Python classes | Tasks 1–3 |
-| Do NOT commit | (no commit steps) |
+| Spec Requirement                                | Task                                    |
+| ----------------------------------------------- | --------------------------------------- |
+| `StreamType` enum: data, log, control           | Task 1                                  |
+| `WireMessage` Pydantic model                    | Task 1                                  |
+| ws_bridge routes by stream field                | Task 4                                  |
+| EventBus tags outgoing with stream="data"       | Task 4                                  |
+| `LogStream` — captures text, publishes as log   | Task 2                                  |
+| `ControlStream` — heartbeat + status as control | Task 3                                  |
+| Python tests for all of the above               | Tasks 1–3, 6                            |
+| All 15 existing Python tests pass               | Tasks 4–5 verify                        |
+| TS client routes by stream                      | Task 8                                  |
+| `onData()`, `onLog()`, `onControl()`            | Task 8                                  |
+| `useChannel` only processes stream=data         | Task 8 (client routing), Task 10 (test) |
+| `useLogStream` hook + tests                     | Tasks 9–10                              |
+| `useControlStream` hook + tests                 | Task 10                                 |
+| All 26 existing TS tests pass                   | Tasks 8–10 verify                       |
+| `examples/backend/main.py` shows all 3          | Task 7                                  |
+| `CLAUDE.md` updated                             | Task 12                                 |
+| JSDoc on new TS hooks                           | Tasks 9–10                              |
+| Docstrings on new Python classes                | Tasks 1–3                               |
+| Do NOT commit                                   | (no commit steps)                       |
