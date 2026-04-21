@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import type { PropsWithChildren } from "react";
+
 import { RealtimeEventBusClient, type WebSocketFactory } from "./client";
 
 const EventBusContext = createContext<RealtimeEventBusClient | null>(null);

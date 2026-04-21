@@ -63,3 +63,6 @@ def create_app(lifespan: Any = None) -> FastAPI:
 
     _mount_ws_bridge(app, bus)
     return app
+
+
+__all__ = ["create_app"]
