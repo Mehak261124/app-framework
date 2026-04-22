@@ -32,7 +32,7 @@ Phase 1 delivers the shell core:
 - `ShellLayout` serializable spec — JSON-safe, describes widget placements per region
 - `RegionItem` type — `{ id, type, props, order? }` — fully serializable widget placement descriptor
 - `createDefaultShellLayout()` helper — single source of truth for default region visibility
-- `defaultRegion?: RegionId` field on `WidgetDefinition` — widget declares its preferred shell region at registration time
+- `defaultRegion?: RegionId` field on `WidgetDefinition` — widget declares its preferred shell region at registration time; defaults to `"main"` when omitted
 - Note: `RegionId` is defined in this package (`shellTypes.ts`) and must be imported by the widget registry package to type `WidgetDefinition.defaultRegion` — this is an intentional cross-package dependency
 - `ApplicationShell` React component — renderer that reads `WidgetRegistry` from context, auto-places widgets by `defaultRegion` when no `initialLayout` is provided, accepts `initialLayout?` to override
 - Sidebar and bottom panel visibility toggle (updates `ShellLayout` in memory)
@@ -208,7 +208,7 @@ interface ShellLayoutContextValue {
 }
 ```
 
-Widgets with no `defaultRegion` are not auto-placed. They are available in the registry but require an explicit `ShellLayout` entry to appear in the shell.
+Widgets with no `defaultRegion` are auto-placed into `"main"` by default. They are available in the registry and will appear in the main region unless an explicit `ShellLayout` entry overrides their placement.
 
 The rendered tree:
 
@@ -305,7 +305,7 @@ The `bottom` panel follows the same rule — the user may want the terminal coll
 
 **Empty region:** A region that has no placed items renders its empty state — a region-specific placeholder (e.g., `main` shows a "No widgets placed" message; `sidebar-left` renders nothing). Empty regions that are hideable default to hidden if `initialLayout` is not supplied. The `main` region always renders something.
 
-**Widget registered after mount with a defaultRegion:** If `initialLayout` was omitted and a widget with `defaultRegion` is registered after `ApplicationShell` mounts, the shell does NOT automatically add it to the layout. Auto-placement only runs once at mount time. Post-mount registrations are available for explicit `ShellLayout` updates but do not silently modify the user's current layout. This prevents unexpected layout shifts when plugins load asynchronously.
+**Widget registered after mount with a defaultRegion:** If `initialLayout` was omitted and a widget with `defaultRegion` is registered after `ApplicationShell` mounts, the shell DOES automatically add it to the layout. This enables dynamic plugin activation similar to VS Code's extension marketplace — a user can activate or deactivate plugins at runtime and the shell layout updates immediately. If `initialLayout` was provided (controlled mode), post-mount registrations do not trigger auto-placement.
 
 **Shell renders before WidgetRegistry is populated:** `ApplicationShell` reads `WidgetRegistry` from context and subscribes to its `onChange`. If the shell mounts before widgets are registered (e.g., because a plugin registers its widgets after mount), items whose `type` is not yet in the registry render as the "Widget not found" placeholder on first render and automatically re-render to the correct component once the type is registered. This is the same live-subscription model used by `useWidgets`.
 

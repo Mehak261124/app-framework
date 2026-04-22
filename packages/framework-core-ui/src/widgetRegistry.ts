@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 
 import { channelMatches } from "./client";
 import type { IDisposable } from "./disposable";
+import type { RegionId } from "./shellTypes";
 
 export type { IDisposable } from "./disposable";
 
@@ -31,6 +32,12 @@ export interface WidgetDefinition {
    * No structured capability tags — the description is the reasoning surface.
    */
   description: string;
+
+  /**
+   * The shell region where this widget should be auto-placed when no
+   * explicit ShellLayout is provided. Defaults to "main" if omitted.
+   */
+  defaultRegion?: RegionId;
 
   /**
    * Glob pattern matching the EventBus channels this widget handles.

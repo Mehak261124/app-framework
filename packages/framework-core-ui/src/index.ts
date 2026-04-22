@@ -22,6 +22,20 @@ export {
   type ChangeListener,
   WidgetRegistry,
 } from "./widgetRegistry";
+export {
+  ApplicationShell,
+  ShellLayoutContext,
+  type ApplicationShellProps,
+} from "./ApplicationShell";
+export { useShellLayout } from "./useShellLayout";
+export {
+  createDefaultShellLayout,
+  type RegionId,
+  type RegionItem,
+  type RegionState,
+  type ShellLayout,
+  type ShellLayoutContextValue,
+} from "./shellTypes";
 export type {
   ConnectionStatus,
   EventHeaders,
