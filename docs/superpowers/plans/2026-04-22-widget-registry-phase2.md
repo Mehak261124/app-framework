@@ -104,28 +104,28 @@ Add the `WidgetCapability` union type:
  */
 export type WidgetCapability =
   // Rendering modality
-  | "chart"        // renders a chart (line, bar, scatter, etc.)
-  | "table"        // renders tabular data
-  | "text"         // renders plain or structured text
-  | "gauge"        // renders a single-value gauge or meter
-  | "status"       // renders a status indicator (connected / disconnected / running)
-  | "map"          // renders a spatial map
-  | "form"         // renders an input form
+  | "chart" // renders a chart (line, bar, scatter, etc.)
+  | "table" // renders tabular data
+  | "text" // renders plain or structured text
+  | "gauge" // renders a single-value gauge or meter
+  | "status" // renders a status indicator (connected / disconnected / running)
+  | "map" // renders a spatial map
+  | "form" // renders an input form
 
   // Data characteristics
-  | "streaming"    // data arrives continuously; widget updates live
-  | "historical"   // queries and displays historical/archived data
-  | "aggregated"   // displays aggregate values (sum, avg, max) rather than raw events
+  | "streaming" // data arrives continuously; widget updates live
+  | "historical" // queries and displays historical/archived data
+  | "aggregated" // displays aggregate values (sum, avg, max) rather than raw events
 
   // Layout characteristics
-  | "compact"      // suitable for narrow panels (status-bar, sidebar)
-  | "fullscreen"   // benefits from or requires full-area display
+  | "compact" // suitable for narrow panels (status-bar, sidebar)
+  | "fullscreen" // benefits from or requires full-area display
 
   // Interaction style
-  | "zoomable"     // supports zoom / pan interactions
-  | "searchable"   // supports text search within displayed data
+  | "zoomable" // supports zoom / pan interactions
+  | "searchable" // supports text search within displayed data
   | "configurable" // exposes interactive configuration controls at runtime
-  | "read-only";   // displays data only, no user interaction
+  | "read-only"; // displays data only, no user interaction
 ```
 
 ### 2a.2 Update Default Widget Definitions
@@ -137,28 +137,32 @@ export const LOG_VIEWER: WidgetDefinition = {
   name: "LogViewer",
   displayName: "Log Viewer",
   summary: "Displays live log stream from simulation stdout/stderr.",
-  description: "...",  // unchanged
+  description: "...", // unchanged
   channelPattern: "log/*",
   consumes: ["text/plain"],
   priority: 10,
   defaultRegion: "bottom",
   capabilities: ["text", "streaming", "searchable", "read-only"],
-  parameters: { /* unchanged */ },
-  factory: () => LogViewerComponent,  // real component — see 2a.3
+  parameters: {
+    /* unchanged */
+  },
+  factory: () => LogViewerComponent, // real component — see 2a.3
 };
 
 export const STATUS_INDICATOR: WidgetDefinition = {
   name: "StatusIndicator",
   displayName: "Status Indicator",
   summary: "Displays heartbeat and run status from the control channel.",
-  description: "...",  // unchanged
+  description: "...", // unchanged
   channelPattern: "control/*",
   consumes: ["application/x-control+json"],
   priority: 10,
   defaultRegion: "status-bar",
   capabilities: ["status", "streaming", "compact", "read-only"],
-  parameters: { /* unchanged */ },
-  factory: () => StatusIndicatorComponent,  // real component — see 2a.3
+  parameters: {
+    /* unchanged */
+  },
+  factory: () => StatusIndicatorComponent, // real component — see 2a.3
 };
 ```
 
@@ -183,7 +187,7 @@ The component is framework-internal and lives in `packages/framework-core-ui/src
 
 Add a new query method to `WidgetRegistry`:
 
-```typescript
+````typescript
 /**
  * Return widgets that declare ALL of the requested capabilities.
  *
@@ -205,11 +209,12 @@ queryByCapability(...capabilities: WidgetCapability[]): WidgetDefinition[] {
     )
     .sort((a, b) => b.priority - a.priority);
 }
-```
+````
 
 ### 2a.5 Export Updates
 
 Export from `packages/framework-core-ui/src/index.ts`:
+
 - `WidgetCapability` type
 
 Do NOT export `LogViewerComponent` or `StatusIndicatorComponent` — they are internal.
@@ -285,6 +290,7 @@ Each package that provides widgets ships a `widgets.json` sidecar file at a well
 ```
 
 **Fields:**
+
 - `name` — must match the `name` field in the exported `WidgetDefinition`. Used as a fast lookup key without loading the module.
 - `module` — relative import path, resolved from the manifest file's location. Always starts with `./`.
 - `export` — named export in the module. The loader does `import(module)[export]` to obtain the `WidgetDefinition`.
@@ -295,7 +301,7 @@ Each package that provides widgets ships a `widgets.json` sidecar file at a well
 
 A new class `WidgetLoader` in `packages/framework-core-ui/src/widgetLoader.ts`:
 
-```typescript
+````typescript
 /**
  * Loads widget definitions from a `widgets.json` manifest and registers
  * them into a {@link WidgetRegistry}.
@@ -341,11 +347,12 @@ export class WidgetLoader {
    */
   dispose(): void;
 }
-```
+````
 
 **Lazy loading contract:** `WidgetLoader` registers each widget immediately upon manifest load. The registered `WidgetDefinition` contains all metadata fields (`name`, `description`, `capabilities`, etc.) so the registry can answer capability queries without loading the module. Only the `factory` function defers work: the first call to `factory(options)` triggers `import(module)` and resolves the component. Subsequent calls use a cached promise.
 
 **Error handling:**
+
 - Manifest fetch/parse error: `loadManifest()` rejects with a descriptive error. No partial registration.
 - Unknown export at factory call time: factory returns a "widget-load-error" component that renders an error message inline. It does not throw — the shell must not crash on a plugin failure.
 - Duplicate name: `WidgetLoader` checks the registry before registering. If the name is already registered (by another loader or by direct `register()` call), it skips the manifest entry and emits a `console.warn`. It does not throw.
@@ -354,7 +361,7 @@ export class WidgetLoader {
 
 A new hook `useWidgetLoader` in `packages/framework-core-ui/src/useWidgetLoader.ts`:
 
-```typescript
+````typescript
 /**
  * Load a widget manifest into the shared registry and keep it registered
  * for the lifetime of the calling component.
@@ -374,10 +381,8 @@ A new hook `useWidgetLoader` in `packages/framework-core-ui/src/useWidgetLoader.
  * }
  * ```
  */
-export function useWidgetLoader(
-  manifestUrl: string
-): "loading" | "ready" | "error";
-```
+export function useWidgetLoader(manifestUrl: string): "loading" | "ready" | "error";
+````
 
 ### 3b.4 Manifest for framework-core-ui Default Widgets
 
@@ -388,6 +393,7 @@ Ship a `packages/framework-core-ui/widgets.json` manifest declaring `LogViewer` 
 ### 3b.5 Export Updates
 
 Export from `packages/framework-core-ui/src/index.ts`:
+
 - `WidgetLoader` class
 - `useWidgetLoader` hook
 - `WidgetManifest` type (the parsed JSON shape)
@@ -482,15 +488,15 @@ None of these require changes to the Phase 2 data model.
 
 ## 6. Edge Cases
 
-| Scenario | Behaviour |
-|---|---|
-| Manifest `module` path does not resolve | Factory renders `widget-load-error` component inline. No crash. `console.error` logged. |
-| Manifest `export` is not a valid `WidgetDefinition` | Factory renders `widget-load-error`. Validation: at minimum, `name` must be a non-empty string. |
-| Two loaders register widgets with the same name | Second registration is skipped with `console.warn`. First registration wins. |
+| Scenario                                                | Behaviour                                                                                                                                      |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manifest `module` path does not resolve                 | Factory renders `widget-load-error` component inline. No crash. `console.error` logged.                                                        |
+| Manifest `export` is not a valid `WidgetDefinition`     | Factory renders `widget-load-error`. Validation: at minimum, `name` must be a non-empty string.                                                |
+| Two loaders register widgets with the same name         | Second registration is skipped with `console.warn`. First registration wins.                                                                   |
 | `dispose()` called while a factory promise is in flight | Promise resolves normally; component is returned. Widget is then unregistered. Already-rendered instances continue to display until re-render. |
-| `loadManifest` called twice on same instance | Second call rejects immediately with `Error: manifest already loaded`. Call `dispose()` first to reload. |
-| `queryByCapability()` called with zero arguments | Returns all widgets that have a non-empty `capabilities` array. (All pass the vacuous `every()` check.) |
-| Widget definition has `capabilities: []` (empty array) | Passes `queryByCapability()` with zero arguments (vacuous true). Fails any query with one or more capability arguments. |
+| `loadManifest` called twice on same instance            | Second call rejects immediately with `Error: manifest already loaded`. Call `dispose()` first to reload.                                       |
+| `queryByCapability()` called with zero arguments        | Returns all widgets that have a non-empty `capabilities` array. (All pass the vacuous `every()` check.)                                        |
+| Widget definition has `capabilities: []` (empty array)  | Passes `queryByCapability()` with zero arguments (vacuous true). Fails any query with one or more capability arguments.                        |
 
 ---
 
@@ -522,12 +528,18 @@ for (const channel of channels) {
 if (layout.regions["status-bar"].items.length === 0) {
   const fallback = registry.queryByCapability("compact", "status")[0];
   if (fallback) {
-    layout.regions["status-bar"].items.push({ id: crypto.randomUUID(), type: fallback.name, props: {}, order: 0 });
+    layout.regions["status-bar"].items.push({
+      id: crypto.randomUUID(),
+      type: fallback.name,
+      props: {},
+      order: 0,
+    });
   }
 }
 ```
 
 This pattern is what the Phase 3 AI agent will implement. Phase 2 makes it possible by providing:
+
 - `resolveWidgets(channel)` — channel-first widget resolution (Phase 1, already shipped).
 - `defaultRegion` — widget declares its preferred region (Phase 1, already shipped).
 - `queryByCapability(...)` — structured fallback query for the AI agent (Phase 2a, new).
