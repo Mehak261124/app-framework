@@ -1,26 +1,60 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 
 import type { RegionItem, RegionSetter, RegionState } from "./shellTypes";
 import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
 
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+/** Merges a default class name with an optional consumer class name. */
+function mergeClassNames(base: string, extra?: string): string | undefined {
+  return [base, extra].filter(Boolean).join(" ") || undefined;
+}
+
 // ─── RegionItemRenderer ───────────────────────────────────────────────────────
 
-// TODO: async factory (Promise return) is not yet handled beyond a loading placeholder —
-// there is no Suspense/lazy integration. Implement proper async widget loading in a future pass.
+// Module-level cache: maps widget type name to its lazy-loaded component.
+// Phase 1 limitation: cache is never invalidated. If a widget is unregistered
+// and re-registered with a different factory, the cached component will be stale.
+const componentCache = new Map<string, React.ComponentType>();
 
 /** Renders a single RegionItem — resolves type from registry, falls back to placeholders. */
 function RegionItemRenderer({ item }: { item: RegionItem }): JSX.Element {
   const registry = useWidgetRegistryInstance();
   const definition = registry.get(item.type);
+
   if (!definition) {
     return <div data-testid="widget-not-found">Widget not found: {item.type}</div>;
   }
+
   const result = definition.factory({ parameters: item.props });
-  if (typeof result !== "function") {
-    return <div data-testid="widget-loading">Loading: {item.type}</div>;
+
+  // Sync factory — result is already a component
+  if (typeof result === "function") {
+    const WidgetComponent = result;
+    return <WidgetComponent />;
   }
-  const WidgetComponent = result;
-  return <WidgetComponent />;
+
+  // Async factory — result is a Promise, use React.lazy + Suspense
+  if (!componentCache.has(item.type)) {
+    const widgetType = item.type;
+    const LazyComponent = lazy(() =>
+      (result as Promise<React.ComponentType>)
+        .then((Component) => ({ default: Component }))
+        .catch(() => ({
+          default: () => (
+            <div data-testid="widget-load-error">Failed to load: {widgetType}</div>
+          ),
+        })),
+    );
+    componentCache.set(item.type, LazyComponent);
+  }
+
+  const LazyWidget = componentCache.get(item.type)!;
+  return (
+    <Suspense fallback={<div data-testid="widget-loading">Loading: {item.type}</div>}>
+      <LazyWidget />
+    </Suspense>
+  );
 }
 
 // ─── SortedItems ──────────────────────────────────────────────────────────────
@@ -40,19 +74,24 @@ function SortedItems({ items }: { items: RegionItem[] }): JSX.Element | null {
   );
 }
 
+// ─── ShellPartProps ───────────────────────────────────────────────────────────
+
+/** Base props shared by all shell region components. */
+export interface ShellPartProps {
+  /** Current state of this region. */
+  region: RegionState;
+  /** Per-region updater. */
+  setRegion: RegionSetter;
+  /** Optional CSS class name. */
+  className?: string;
+}
+
 // ─── ShellHeaderProps ─────────────────────────────────────────────────────────
 
 /**
  * Props for {@link ShellHeader}.
  */
-export interface ShellHeaderProps {
-  /** Current state of the header region. */
-  region: RegionState;
-  /** Per-region updater (accepted for API consistency; header is non-togglable). */
-  setRegion: RegionSetter;
-  /** Optional CSS class name applied to the header element. */
-  className?: string;
-}
+export type ShellHeaderProps = ShellPartProps;
 
 // ─── ShellHeader ──────────────────────────────────────────────────────────────
 
@@ -73,7 +112,7 @@ export function ShellHeader({
 }: ShellHeaderProps): JSX.Element {
   return (
     <header
-      className={["sct-ShellHeader", className].filter(Boolean).join(" ") || undefined}
+      className={mergeClassNames("sct-ShellHeader", className)}
       data-testid="shell-header"
     >
       <SortedItems items={region.items} />
@@ -86,15 +125,9 @@ export function ShellHeader({
 /**
  * Props for {@link ShellSidebar}.
  */
-export interface ShellSidebarProps {
+export interface ShellSidebarProps extends ShellPartProps {
   /** Which sidebar to render. */
   side: "left" | "right";
-  /** Current state of the sidebar region. */
-  region: RegionState;
-  /** Per-region updater for this sidebar. */
-  setRegion: RegionSetter;
-  /** Optional CSS class name applied to the sidebar element. */
-  className?: string;
 }
 
 // ─── ShellSidebar ─────────────────────────────────────────────────────────────
@@ -102,7 +135,8 @@ export interface ShellSidebarProps {
 /**
  * Renders a collapsible sidebar shell region (`sidebar-left` or `sidebar-right`).
  *
- * Hidden via `display: none` when the region's `visible` flag is `false`.
+ * Collapses to a thin strip (32px) showing only the toggle button when `visible` is `false`.
+ * Never fully hidden — the toggle button is always accessible.
  *
  * @param props - {@link ShellSidebarProps}
  * @returns An aside with `data-testid="shell-sidebar-{side}"` containing sorted region items.
@@ -119,17 +153,18 @@ export function ShellSidebar({
 }: ShellSidebarProps): JSX.Element {
   return (
     <aside
-      className={["sct-ShellSidebar", className].filter(Boolean).join(" ") || undefined}
+      className={mergeClassNames("sct-ShellSidebar", className)}
       data-testid={`shell-sidebar-${side}`}
-      style={{ display: region.visible ? undefined : "none" }}
+      style={{ width: region.visible ? "220px" : "32px", overflow: "hidden" }}
     >
       <button
         data-testid={`shell-sidebar-${side}-toggle`}
         onClick={() => setRegion((prev) => ({ ...prev, visible: !prev.visible }))}
+        style={{ width: "100%", cursor: "pointer" }}
       >
-        {region.visible ? "Hide" : "Show"}
+        {region.visible ? "<<" : ">>"}
       </button>
-      <SortedItems items={region.items} />
+      {region.visible && <SortedItems items={region.items} />}
     </aside>
   );
 }
@@ -139,14 +174,7 @@ export function ShellSidebar({
 /**
  * Props for {@link ShellMain}.
  */
-export interface ShellMainProps {
-  /** Current state of the main region. */
-  region: RegionState;
-  /** Per-region updater (accepted for API consistency; main is non-togglable). */
-  setRegion: RegionSetter;
-  /** Optional CSS class name applied to the main element. */
-  className?: string;
-}
+export type ShellMainProps = ShellPartProps;
 
 // ─── ShellMain ────────────────────────────────────────────────────────────────
 
@@ -169,7 +197,7 @@ export function ShellMain({
 }: ShellMainProps): JSX.Element {
   return (
     <main
-      className={["sct-ShellMain", className].filter(Boolean).join(" ") || undefined}
+      className={mergeClassNames("sct-ShellMain", className)}
       data-testid="shell-main"
     >
       {region.items.length === 0 ? (
@@ -186,14 +214,7 @@ export function ShellMain({
 /**
  * Props for {@link ShellBottom}.
  */
-export interface ShellBottomProps {
-  /** Current state of the bottom region. */
-  region: RegionState;
-  /** Per-region updater for this region. */
-  setRegion: RegionSetter;
-  /** Optional CSS class name applied to the bottom element. */
-  className?: string;
-}
+export type ShellBottomProps = ShellPartProps;
 
 // ─── ShellBottom ──────────────────────────────────────────────────────────────
 
@@ -216,7 +237,7 @@ export function ShellBottom({
 }: ShellBottomProps): JSX.Element {
   return (
     <div
-      className={["sct-ShellBottom", className].filter(Boolean).join(" ") || undefined}
+      className={mergeClassNames("sct-ShellBottom", className)}
       data-testid="shell-bottom"
       style={{ display: region.visible ? undefined : "none" }}
     >
@@ -236,14 +257,7 @@ export function ShellBottom({
 /**
  * Props for {@link ShellStatusBar}.
  */
-export interface ShellStatusBarProps {
-  /** Current state of the status-bar region. */
-  region: RegionState;
-  /** Per-region updater (accepted for API consistency; status-bar is non-togglable). */
-  setRegion: RegionSetter;
-  /** Optional CSS class name applied to the status-bar element. */
-  className?: string;
-}
+export type ShellStatusBarProps = ShellPartProps;
 
 // ─── ShellStatusBar ───────────────────────────────────────────────────────────
 
@@ -264,9 +278,7 @@ export function ShellStatusBar({
 }: ShellStatusBarProps): JSX.Element {
   return (
     <footer
-      className={
-        ["sct-ShellStatusBar", className].filter(Boolean).join(" ") || undefined
-      }
+      className={mergeClassNames("sct-ShellStatusBar", className)}
       data-testid="shell-status-bar"
     >
       <SortedItems items={region.items} />

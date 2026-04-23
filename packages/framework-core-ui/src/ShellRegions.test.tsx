@@ -79,7 +79,7 @@ describe("ShellSidebar", () => {
     });
 
     const el = renderer!.root.findByProps({ "data-testid": "shell-sidebar-left" });
-    expect(el.props.style).toEqual({ display: "none" });
+    expect(el.props.style).toEqual({ width: "32px", overflow: "hidden" });
   });
 
   it("side=right renders shell-sidebar-right", () => {
@@ -104,7 +104,7 @@ describe("ShellSidebar", () => {
     });
 
     const el = renderer!.root.findByProps({ "data-testid": "shell-sidebar-right" });
-    expect(el.props.style).toEqual({ display: "none" });
+    expect(el.props.style).toEqual({ width: "32px", overflow: "hidden" });
   });
 });
 
@@ -283,6 +283,42 @@ describe("RegionItemRenderer (via ShellMain)", () => {
 
     expect(
       renderer!.root.findByProps({ "data-testid": "widget-loading" }),
+    ).toBeDefined();
+  });
+
+  // NOTE: Testing the resolved state of an async factory requires @testing-library/react
+  // with jsdom — react-test-renderer does not support Suspense resolution.
+  // This is tracked as a follow-up when the test environment is migrated.
+
+  it("renders widget-load-error placeholder when async factory rejects", async () => {
+    const registry = new WidgetRegistry();
+    const failingWidget: WidgetDefinition = {
+      name: "FailingWidget",
+      description: "Failing",
+      channelPattern: "data/*",
+      consumes: ["text/plain"],
+      priority: 10,
+      parameters: {},
+      factory: () => Promise.reject(new Error("load failed")),
+    };
+    registry.register(failingWidget);
+    const layout: ShellLayout = {
+      regions: {
+        ...createDefaultShellLayout().regions,
+        main: {
+          visible: true,
+          items: [{ id: "f1", type: "FailingWidget", props: {}, order: 0 }],
+        },
+      },
+    };
+    let renderer: ReturnType<typeof create>;
+
+    await act(async () => {
+      renderer = renderWithShell(registry, layout);
+    });
+
+    expect(
+      renderer!.root.findByProps({ "data-testid": "widget-load-error" }),
     ).toBeDefined();
   });
 });

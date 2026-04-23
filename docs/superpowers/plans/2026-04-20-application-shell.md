@@ -168,6 +168,13 @@ interface ApplicationShellProps {
    * Widgets with no defaultRegion are auto-placed into main.
    */
   initialLayout?: ShellLayout;
+  /**
+   * Kept temporarily — will be removed once Zustand refactor lands,
+   * which removes the need to mount context consumers inside the shell.
+   */
+  children?: React.ReactNode;
+  /** Optional CSS class overrides for individual shell regions. */
+  classNames?: ShellClassNames;
 }
 ```
 
@@ -223,16 +230,16 @@ Each sub-component is internal to the shell package. They read from `ShellLayout
  * Returns the current ShellLayout and a functional updater.
  * Re-renders whenever the layout changes.
  */
-function useShellLayout(): {
-  layout: ShellLayout;
-  setLayout: (updater: (prev: ShellLayout) => ShellLayout) => void;
-};
+function useShellLayout(): [
+  ShellLayout,
+  (updater: (prev: ShellLayout) => ShellLayout) => void,
+];
 ```
 
 The functional updater pattern (rather than a direct value setter) ensures atomic updates when multiple regions change at once — the updater always receives the latest state, preventing stale-closure bugs in concurrent renders. The sidebar toggle, for example:
 
 ```typescript
-const { setLayout } = useShellLayout();
+const [layout, setLayout] = useShellLayout();
 setLayout((prev) => ({
   ...prev,
   regions: {
@@ -353,7 +360,7 @@ The shell is a renderer. Widgets with `defaultRegion` set are auto-placed on mou
       - [ ] ShellStatusBar — renders region: status-bar items, always visible
 
 - [ ] Task 4: useShellLayout hook
-      - [ ] useShellLayout(): { layout, setLayout } — subscribes to ShellLayoutContext, re-renders on change
+      - [ ] useShellLayout(): [ShellLayout, setLayout] — subscribes to ShellLayoutContext, re-renders on change
       - [ ] Tests: initial layout, layout update re-render, toggle visibility via setLayout
 
 - [ ] Task 5: Public exports

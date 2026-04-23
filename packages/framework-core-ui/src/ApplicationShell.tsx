@@ -71,6 +71,8 @@ function applyNonTogglableCorrection(layout: ShellLayout): ShellLayout {
  * Optional CSS class overrides for each shell region and the content wrapper.
  */
 export interface ShellClassNames {
+  /** Applied to the root shell layout div. */
+  layout?: string;
   /** Applied to the {@link ShellHeader} element. */
   header?: string;
   /** Applied to the horizontal content wrapper div (left sidebar + main + right sidebar). */
@@ -155,7 +157,9 @@ export function ApplicationShell({
       return applyNonTogglableCorrection(merged);
     }
 
-    // Build layout from registry
+    // Build layout from registry.
+    // TODO: This auto-placement from registry should be removed once AI layout
+    // generation or a layout editor is available to replace it.
     const base = createDefaultShellLayout();
     const regions = { ...base.regions } as Record<RegionId, RegionState>;
 
@@ -179,10 +183,9 @@ export function ApplicationShell({
   // Post-mount auto-placement: subscribe to registry changes when no
   // explicit initialLayout was provided.
   useEffect(() => {
-    if (isControlled) return;
-
     const handle = registry.onChange((event) => {
       if (event.type === "added") {
+        if (isControlled) return;
         // FIXME: Auto-injecting widgets on registration should be removed at a later stage.
         // The registry should only catalog available widget types; the user/consumer
         // should decide what gets placed in the layout and when.
@@ -206,6 +209,8 @@ export function ApplicationShell({
           };
         });
       } else if (event.type === "removed") {
+        // Always remove widgets from layout when unregistered,
+        // even in controlled mode — a removed widget cannot render.
         setLayout((prev) => {
           const updatedRegions = { ...prev.regions } as Record<RegionId, RegionState>;
           for (const regionId of Object.keys(updatedRegions) as RegionId[]) {
@@ -246,7 +251,13 @@ export function ApplicationShell({
 
   return (
     <ShellLayoutContext.Provider value={{ layout, setLayout }}>
-      <div data-testid="shell-layout">
+      <div
+        className={
+          ["sct-ApplicationShell", classNames?.layout].filter(Boolean).join(" ") ||
+          undefined
+        }
+        data-testid="shell-layout"
+      >
         <ShellHeader
           region={layout.regions.header}
           setRegion={regionSetters["header"]}
@@ -258,7 +269,6 @@ export function ApplicationShell({
               .filter(Boolean)
               .join(" ") || undefined
           }
-          data-testid="shell-body"
         >
           <ShellSidebar
             side="left"

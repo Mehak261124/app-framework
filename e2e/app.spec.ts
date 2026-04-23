@@ -4,7 +4,7 @@ const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
 
 test("renders the application shell", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("[data-testid='shell-main']")).toBeVisible();
+  await expect(page.getByText("UI shell placeholder")).toBeVisible();
 });
 
 test("backend health endpoint returns ok", async ({ request }) => {

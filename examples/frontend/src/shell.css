@@ -9,7 +9,7 @@ body {
   overflow: hidden;
 }
 
-[data-testid="shell-layout"] {
+.sct-ApplicationShell {
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -35,11 +35,10 @@ body {
 .sct-ShellSidebar {
   background: #252526;
   color: white;
-  width: 220px;
   padding: 8px;
   border-right: 1px solid #444;
   overflow-y: auto;
-  position: relative;
+  transition: width 0.2s ease;
 }
 
 /* Show button sits outside the sidebar — in the content area */
