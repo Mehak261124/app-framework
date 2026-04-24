@@ -33,6 +33,55 @@ export interface LogViewerProps {
   wrapLines?: boolean;
 }
 
+const LOG_VIEWER_PREFIX = "jp-LogViewer";
+
+const STYLES = `
+  .${LOG_VIEWER_PREFIX}-empty {
+    padding: 8px;
+    color: #888;
+    font-family: monospace;
+    font-size: 12px;
+  }
+
+  .${LOG_VIEWER_PREFIX}-container {
+    font-family: monospace;
+    font-size: 12px;
+    overflow-y: auto;
+    height: 100%;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+
+  .${LOG_VIEWER_PREFIX}-line {
+    white-space: pre;
+    margin-bottom: 2px;
+  }
+
+  .${LOG_VIEWER_PREFIX}-line--wrap {
+    white-space: pre-wrap;
+  }
+
+  .${LOG_VIEWER_PREFIX}-timestamp {
+    color: #888;
+    margin-right: 8px;
+  }
+`;
+
+let stylesInjected = false;
+
+function injectStyles(): void {
+  if (stylesInjected || typeof document === "undefined") {
+    return;
+  }
+  const style = document.createElement("style");
+  style.setAttribute("data-jp-log-viewer", "");
+  style.textContent = STYLES;
+  document.head.appendChild(style);
+  stylesInjected = true;
+}
+
 /**
  * Displays a live, auto-scrolling log stream from an EventBus channel.
  *
@@ -45,7 +94,9 @@ export interface LogViewerProps {
  * instance changes — changing `maxLines`, `showTimestamps`, or `wrapLines`
  * does NOT resubscribe and does NOT reset the log history.
  *
- * Uses inline styles only — no external CSS dependencies.
+ * Styles are applied via deterministic CSS class names prefixed with
+ * `jp-LogViewer-`. A single `<style>` block is injected into `document.head`
+ * on first render and reused for all subsequent instances.
  *
  * @param props Component props — see {@link LogViewerProps}.
  * @returns A scrolling log viewer element.
@@ -63,6 +114,8 @@ export const LogViewerComponent: ComponentType<LogViewerProps> = ({
   const client = useEventBusClient();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  injectStyles();
 
   /**
    * Ref that mirrors the `maxLines` prop so the subscription callback always
@@ -106,43 +159,18 @@ export const LogViewerComponent: ComponentType<LogViewerProps> = ({
   }, [logs]);
 
   if (logs.length === 0) {
-    return (
-      <div
-        style={{
-          padding: "8px",
-          color: "#888",
-          fontFamily: "monospace",
-          fontSize: "12px",
-        }}
-      >
-        No logs yet
-      </div>
-    );
+    return <div className={`${LOG_VIEWER_PREFIX}-empty`}>No logs yet</div>;
   }
 
   return (
-    <div
-      style={{
-        fontFamily: "monospace",
-        fontSize: "12px",
-        overflowY: "auto",
-        height: "100%",
-        backgroundColor: "#1e1e1e",
-        color: "#d4d4d4",
-        padding: "8px",
-        boxSizing: "border-box",
-      }}
-    >
+    <div className={`${LOG_VIEWER_PREFIX}-container`}>
       {logs.map((entry) => (
         <div
           key={entry.id}
-          style={{
-            whiteSpace: wrapLines ? "pre-wrap" : "pre",
-            marginBottom: "2px",
-          }}
+          className={`${LOG_VIEWER_PREFIX}-line${wrapLines ? ` ${LOG_VIEWER_PREFIX}-line--wrap` : ""}`}
         >
           {showTimestamps && (
-            <span style={{ color: "#888", marginRight: "8px" }}>
+            <span className={`${LOG_VIEWER_PREFIX}-timestamp`}>
               {new Date(entry.timestamp).toISOString()}
             </span>
           )}

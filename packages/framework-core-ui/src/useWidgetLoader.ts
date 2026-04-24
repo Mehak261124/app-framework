@@ -1,15 +1,28 @@
 import { useEffect, useState } from "react";
 
-import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
-import { WidgetLoader } from "./widgetLoader";
+import { useWidgetLoaderInstance } from "./WidgetLoaderContext";
+
+/**
+ * Represents the loading state of a widget manifest.
+ *
+ * - `"loading"` — the manifest fetch is in progress.
+ * - `"ready"` — the manifest was loaded and widgets are registered.
+ * - `"error"` — the manifest fetch or registration failed.
+ */
+export type WidgetLoaderStatus = "loading" | "ready" | "error";
 
 /**
  * Load a widget manifest into the shared registry and keep it registered
  * for the lifetime of the calling component.
  *
- * Calls `loader.loadManifest(manifestUrl)` on mount and `loader.dispose()`
- * on unmount. Triggers a re-render once the manifest is loaded so that
- * widgets registered by the manifest are available for layout resolution.
+ * Uses the shared {@link WidgetLoader} instance from the nearest
+ * {@link WidgetLoaderProvider}, so multiple calls across sibling components
+ * (e.g. one per installed plugin) share a single loader and registry — there
+ * is no risk of duplicate registrations or redundant fetches for the same URL.
+ *
+ * When the component unmounts, the manifest is unloaded via
+ * `loader.unloadManifest(manifestUrl)`, leaving any other loaded manifests
+ * untouched.
  *
  * **Note on manifest URL serving:** For now, consumers hardcode the manifest
  * URL (e.g. `useWidgetLoader("/sct-manifest.json")`). Serving manifest files
@@ -18,22 +31,28 @@ import { WidgetLoader } from "./widgetLoader";
  * left open to support this pattern without API changes.
  *
  * @param manifestUrl URL of the `sct-manifest.json` manifest to load.
- * @returns Loading state — `"loading"`, `"ready"`, or `"error"`.
+ * @returns Loading state — see {@link WidgetLoaderStatus}.
  * @example
- * ```ts
- * function App() {
- *   const status = useWidgetLoader("/sct-manifest.json");
+ * ```tsx
+ * // Each plugin mounts its own loader; they share the underlying registry.
+ * function PluginA() {
+ *   const status = useWidgetLoader("/plugin-a/sct-manifest.json");
+ *   if (status === "loading") return <Spinner />;
+ *   return <ApplicationShell />;
+ * }
+ *
+ * function PluginB() {
+ *   const status = useWidgetLoader("/plugin-b/sct-manifest.json");
  *   if (status === "loading") return <Spinner />;
  *   return <ApplicationShell />;
  * }
  * ```
  */
-export function useWidgetLoader(manifestUrl: string): "loading" | "ready" | "error" {
-  const registry = useWidgetRegistryInstance();
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+export function useWidgetLoader(manifestUrl: string): WidgetLoaderStatus {
+  const loader = useWidgetLoaderInstance();
+  const [status, setStatus] = useState<WidgetLoaderStatus>("loading");
 
   useEffect(() => {
-    const loader = new WidgetLoader(registry);
     let cancelled = false;
 
     loader.loadManifest(manifestUrl).then(
@@ -47,9 +66,9 @@ export function useWidgetLoader(manifestUrl: string): "loading" | "ready" | "err
 
     return () => {
       cancelled = true;
-      loader.dispose();
+      loader.unloadManifest(manifestUrl);
     };
-  }, [registry, manifestUrl]);
+  }, [loader, manifestUrl]);
 
   return status;
 }

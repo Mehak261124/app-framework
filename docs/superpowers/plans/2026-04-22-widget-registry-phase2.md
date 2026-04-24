@@ -29,13 +29,13 @@ Every consumer calls `registry.register(MY_WIDGET)` in application code. There i
 Replace the `LogViewerPlaceholder` in `defaultWidgets.ts` with a functional React component that uses framework event bus primitives. The component must:
 
 - Accept `parameters: { maxLines?: number; showTimestamps?: boolean; wrapLines?: boolean }` via `ComponentOptions`.
-- Subscribe to the channel it was placed on using `useEventBusClient` and `client.subscribe()` — the channel is passed as a prop.`useChannel` is not used because it only replays the last event; the LogViewer needs the full event stream to accumulate log history.
+- Subscribe to the channel it was placed on using `useEventBusClient` and `client.subscribe()` — the channel is passed as a prop. `useChannel` is not used because it only replays the last event; the LogViewer needs the full event stream to accumulate log history.
 - Display log lines in a scrolling container, newest at bottom.
 - Respect `maxLines` — trim oldest entries when exceeded.
 - Optionally show timestamp prefix when `showTimestamps: true`.
 - Optionally wrap long lines when `wrapLines: true`.
 - Show a "No logs yet" placeholder when the channel has produced no events.
-- Apply no external CSS dependencies — use inline styles or a CSS module scoped to this file.
+- Apply styles via deterministic CSS class names prefixed with `jp-LogViewer-`. A single `<style>` block is injected into `document.head` on first render — no external CSS dependencies, no inline styles.
 
 The component is framework-internal and lives in `packages/framework-core-ui/src/LogViewer.tsx`. It is not exported from `index.ts` — consumers obtain it through the registry's factory, not by importing it directly.
 
@@ -126,21 +126,30 @@ Each package that provides widgets ships an `sct-manifest.json` sidecar file at 
 
 **Why JSON, not TypeScript/JS:** A JSON manifest can be statically analyzed, linted, validated against a schema, and read by tooling without executing code. It is the same reason `package.json` is JSON. A `.ts` manifest would require `tsx` or `ts-node` to parse, which is inappropriate for a runtime loader.
 
+**JSON Schema:** A `sct-manifest.schema.json` is shipped alongside the manifest for validation and editor tooling. The TypeScript interfaces `SctManifestEntry` and `SctManifest` in `widgetLoader.ts` should eventually be generated from this schema to ensure consistency — this is a follow-up task pending agreement on the codegen tool (see open questions).
+
 The TypeScript interface for a manifest entry:
 
 ```typescript
 /** A single widget entry in an {@link SctManifest}. */
 export interface SctManifestEntry {
+  /** Unique widget identifier used as the registry key. */
   name: string;
+  /** Human-readable description of the widget's purpose. */
   description: string;
+  /** Glob pattern matched against EventBus channel names. */
   channelPattern: string;
+  /** List of MIME types this widget expects to receive. */
   consumes: string[];
+  /** Priority for tie-breaking. Higher wins. */
   priority: number;
+  /** Optional preferred layout region. */
   defaultRegion?: RegionId;
+  /** JSON Schema-compatible parameter descriptors. */
   parameters: Record<string, unknown>;
-  /** Relative import path resolved from the manifest file's location. Always starts with `./`. */
+  /** Relative import path. Always starts with `./`. */
   module: string;
-  /** Named export in the module that holds the React component. */
+  /** Named export holding the React component. */
   export: string;
 }
 
@@ -153,168 +162,183 @@ export interface SctManifest {
 
 ### 2.4 WidgetLoader
 
-A new class `WidgetLoader` in `packages/framework-core-ui/src/widgetLoader.ts`:
+A new class `WidgetLoader` in `packages/framework-core-ui/src/widgetLoader.ts`.
+`WidgetLoader` implements `IDisposable`.
+
+**Multiple manifests:** A single `WidgetLoader` instance can load multiple manifests from different URLs. Each `loadManifest` call tracks its own registration handles so that a single manifest can be unloaded via `unloadManifest` without affecting widgets registered by other manifests.
 
 ````typescript
 /**
- * Loads widget definitions from an `sct-manifest.json` manifest and registers
- * them into a {@link WidgetRegistry}.
+ * Loads widget definitions from `sct-manifest.json` manifest files and
+ * registers them into a {@link WidgetRegistry}.
  *
- * The registry and the loader are loosely coupled:
- * - The registry has no knowledge of manifests.
- * - The loader has no knowledge of how the registry stores or resolves widgets.
+ * Multiple manifests can be loaded independently — each call to
+ * {@link loadManifest} tracks its own registration handles so that a single
+ * manifest can be unloaded via {@link unloadManifest} without affecting
+ * widgets registered by other manifests.
  *
- * Lazy loading: the factory for each manifest widget wraps the module import
- * in a dynamic `import()`. The module is not loaded until the widget is first
- * rendered — not at manifest load time. All metadata fields are read from the
- * manifest directly, so the registry can answer metadata queries immediately
- * after `loadManifest` resolves.
+ * Implements {@link IDisposable} — calling {@link dispose} unregisters all
+ * widgets across every loaded manifest.
  *
  * @example
  * ```ts
  * const loader = new WidgetLoader(registry);
- * await loader.loadManifest("/sct-manifest.json");
+ * await loader.loadManifest("/plugin-a/sct-manifest.json");
+ * await loader.loadManifest("/plugin-b/sct-manifest.json");
+ * loader.unloadManifest("/plugin-a/sct-manifest.json");
+ * loader.dispose(); // unloads everything
  * ```
  */
-export class WidgetLoader {
-  constructor(private readonly registry: WidgetRegistry) {}
+export class WidgetLoader implements IDisposable {
+  constructor(registry: WidgetRegistry, importFn?: ImportFn);
 
   /**
-   * Fetch and parse an `sct-manifest.json` manifest, then register each declared
-   * widget into the registry.
-   *
-   * Registration is immediate for metadata; the component factory is lazy —
-   * the module import is deferred until the factory is first called.
-   *
-   * @param manifestUrl Absolute URL or path to the `sct-manifest.json` file.
-   * @returns Promise that resolves when all widgets are registered.
-   * @throws Error if the manifest cannot be fetched or parsed.
-   * @throws Error if a widget module or export cannot be resolved at factory call time.
+   * Fetch and parse a manifest, then register each declared widget.
+   * - Same URL called twice: no-op on second call.
+   * - Concurrent calls for the same URL: coalesced into a single fetch.
+   * - Multiple distinct URLs: load independently without interference.
    */
   async loadManifest(manifestUrl: string): Promise<void>;
 
   /**
-   * Unregister all widgets that were registered by this loader instance.
-   *
-   * Calls `dispose()` on all registration handles. Widgets currently rendered
-   * are not affected — `WidgetRegistry` guarantees stability of resolved
-   * components until re-render.
+   * Unregister all widgets from a specific manifest.
+   * No-op if the URL was never loaded.
+   */
+  unloadManifest(manifestUrl: string): void;
+
+  /**
+   * Unregister all widgets across every loaded manifest.
+   * Calling dispose() more than once is a no-op.
    */
   dispose(): void;
 }
 ````
 
-**Lazy loading contract:** For each manifest entry, the loader calls `registry.register()` immediately with all metadata from the manifest. Only the `factory` function defers work: the first call to `factory(options)` triggers `import(module)` and resolves the named export as the React component. Subsequent calls use a cached promise.
+**Lazy loading contract:** For each manifest entry, the loader calls `registry.register()` immediately with all metadata from the manifest. Only the `factory` function defers work: the first call triggers `import(module)` and resolves the named export. Subsequent calls use a cached promise.
 
 **Error handling:**
 
-- Manifest fetch/parse error: `loadManifest()` rejects with a descriptive error. No partial registration.
-- Unknown export at factory call time: factory returns a `widget-load-error` component that renders an error message inline. It does not throw — the shell must not crash on a plugin failure.
-- Duplicate name: `WidgetLoader` checks the registry before registering. If the name is already registered (by another loader or by direct `register()` call), it skips the manifest entry and emits a `console.warn`. It does not throw.
-- `loadManifest` called twice on the same instance: second call rejects with `Error: manifest already loaded`. Call `dispose()` first to reload.
+- Manifest fetch/parse error: `loadManifest()` rejects. No partial registration.
+- Unknown export at factory call time: factory returns a `widget-load-error` component inline. Does not throw.
+- Duplicate name: skipped with `console.warn`. Does not throw.
+- Same URL called twice: second call is a no-op (resolves immediately, no re-fetch).
 
-### 2.5 useWidgetLoader Hook
+### 2.5 WidgetLoaderContext
 
-A new hook `useWidgetLoader` in `packages/framework-core-ui/src/useWidgetLoader.ts`:
+A new `WidgetLoaderContext.tsx` provides a **single shared `WidgetLoader` instance** to the React subtree. This is required because `useWidgetLoader` (see 2.6) must reuse the same loader across multiple components — each plugin component calls `useWidgetLoader` with its own URL, and they must all share one loader to avoid duplicate registrations.
 
-````typescript
+```typescript
 /**
- * Load a widget manifest into the shared registry and keep it registered
- * for the lifetime of the calling component.
- *
- * Calls `loader.loadManifest(manifestUrl)` on mount and `loader.dispose()`
- * on unmount. Triggers a re-render once the manifest is loaded so that
- * widgets registered by the manifest are available for layout resolution.
- *
- * **Note on manifest URL serving:** For now, consumers hardcode the manifest
- * URL (e.g. `useWidgetLoader("/sct-manifest.json")`). Serving manifest files
- * from the backend — so that installed plugins can register themselves at a
- * well-known URL — is a follow-up task. The URL parameter is intentionally
- * left open to support this pattern without API changes.
- *
- * @param manifestUrl URL of the `sct-manifest.json` manifest to load.
- * @returns Loading state — `"loading"`, `"ready"`, or `"error"`.
- * @example
- * ```ts
- * function App() {
- *   const status = useWidgetLoader("/sct-manifest.json");
- *   if (status === "loading") return <Spinner />;
- *   return <ApplicationShell />;
- * }
- * ```
+ * Provides a single shared WidgetLoader to the subtree.
+ * Must be rendered inside WidgetRegistryContext.Provider.
  */
-export function useWidgetLoader(manifestUrl: string): "loading" | "ready" | "error";
-````
+export const WidgetLoaderProvider: ComponentType<{ children: ReactNode }>;
 
-### 2.6 Manifest for framework-core-ui Default Widgets
+/** Returns the shared WidgetLoader instance from context. */
+export function useWidgetLoaderInstance(): WidgetLoader;
+```
 
-Ship a `packages/framework-core-ui/sct-manifest.json` manifest declaring `LogViewer` and `StatusIndicator`. This is the reference manifest — it is loaded by the integration test to verify end-to-end manifest loading.
+### 2.6 useWidgetLoader Hook
 
-`EventBusProvider` itself does NOT auto-load this manifest. Auto-loading would couple the provider to the manifest path and make it non-configurable. Instead, the consuming application calls `useWidgetLoader` explicitly. The example frontend (`examples/frontend`) is updated to demonstrate this pattern.
+A new hook `useWidgetLoader` in `packages/framework-core-ui/src/useWidgetLoader.ts`.
 
-### 2.7 Export Updates
+Uses the shared `WidgetLoader` from `WidgetLoaderProvider` context. On unmount calls `loader.unloadManifest(manifestUrl)` — not `loader.dispose()` — so only this component's manifest is unloaded, leaving other manifests untouched.
+
+Returns `WidgetLoaderStatus` — a named exported type:
+
+```typescript
+/** "loading" | "ready" | "error" */
+export type WidgetLoaderStatus = "loading" | "ready" | "error";
+
+export function useWidgetLoader(manifestUrl: string): WidgetLoaderStatus;
+```
+
+### 2.7 Manifest for framework-core-ui Default Widgets
+
+Ship `packages/framework-core-ui/sct-manifest.json` declaring `LogViewer` and `StatusIndicator`. Also ship `packages/framework-core-ui/sct-manifest.schema.json` — the JSON Schema for validating manifest files.
+
+`EventBusProvider` does NOT auto-load this manifest. The consuming application calls `useWidgetLoader` explicitly inside a `WidgetLoaderProvider`.
+
+### 2.8 Export Updates
 
 Export from `packages/framework-core-ui/src/index.ts`:
 
 - `WidgetLoader` class
+- `WidgetLoaderProvider` component
 - `useWidgetLoader` hook
-- `SctManifest` type (the parsed JSON shape)
-- `SctManifestEntry` type (a single entry within the manifest)
+- `WidgetLoaderStatus` type
+- `SctManifest` type
+- `SctManifestEntry` type
 
-Do NOT export `LogViewerComponent` or `StatusIndicatorComponent` — they are internal, resolved through the registry's factory.
+Do NOT export `LogViewerComponent` or `StatusIndicatorComponent`.
 
-### 2.8 Tests
+### 2.9 Tests
 
-- **`defaultWidgets.test.ts`** — add or update tests:
+- **`defaultWidgets.test.ts`** — add or update:
   - `LOG_VIEWER.defaultRegion` is `"bottom"`.
   - `STATUS_INDICATOR.defaultRegion` is `"status-bar"`.
-  - `LOG_VIEWER.factory()` returns a React component (not null, not a Promise).
+  - `LOG_VIEWER.factory()` returns a React component.
 
-- **`LogViewer.test.tsx`** — new test file for the LogViewer component:
-  - Renders "No logs yet" when no events have arrived.
+- **`LogViewer.test.tsx`** — component behaviour:
+  - Renders "No logs yet" when no events arrived.
   - Displays log lines when channel emits events.
-  - Trims oldest lines when `maxLines` is exceeded.
-  - Shows timestamps when `showTimestamps: true`.
-  - Hides timestamps when `showTimestamps: false`.
-  - Wraps lines when `wrapLines: true`.
+  - Trims oldest lines when `maxLines` exceeded.
+  - Shows/hides timestamps per `showTimestamps`.
+  - Wraps lines per `wrapLines`.
 
-- **`widgetLoader.test.ts`** — new test file:
+- **`widgetLoader.test.ts`** — loader behaviour:
   - `loadManifest` registers all declared widgets.
-  - Metadata fields (name, description, channelPattern, defaultRegion) are available immediately after `loadManifest` resolves.
-  - Factory calls trigger dynamic import (mock the import to avoid real network calls).
-  - Factory is cached — second call reuses the first import promise.
-  - Duplicate widget name is skipped with `console.warn`, does not throw.
-  - Manifest fetch failure rejects `loadManifest` with descriptive error.
-  - `loadManifest` called twice rejects with `Error: manifest already loaded`.
-  - `dispose()` unregisters all loaded widgets.
+  - Metadata available immediately after resolve.
+  - Factory triggers dynamic import.
+  - Factory is cached.
+  - Duplicate name skipped with `console.warn`.
+  - Fetch failure rejects with descriptive error.
+  - Same URL twice is a no-op — fetch called only once.
+  - Concurrent calls for same URL coalesce into one fetch.
+  - Loads two manifests independently.
+  - `unloadManifest` removes only that manifest's widgets.
+  - `unloadManifest` on unknown URL is a no-op.
+  - After `unloadManifest`, same URL can be reloaded.
+  - Two manifests loaded concurrently without interference.
+  - `dispose()` unregisters all widgets across all manifests.
   - `dispose()` after `dispose()` is a no-op.
 
-- **`useWidgetLoader.test.tsx`** — new test file:
+- **`useWidgetLoader.test.tsx`** — hook state:
   - Returns `"loading"` immediately after mount.
   - Returns `"ready"` after manifest loads.
   - Returns `"error"` when manifest load fails.
-  - Calls `loader.dispose()` on unmount.
-  - Re-renders when manifest loading completes.
+  - Unmount calls `unloadManifest` — widgets removed.
+  - Transitions loading → ready in correct order.
+  - Two hooks sharing one `WidgetLoaderProvider` register both manifests.
+  - Unmounting one hook unloads only its manifest.
+  - Same URL used by two hooks only fetches once.
 
-### 2.9 PR Checklist
+### 2.10 Open Questions
 
-- [ ] Add `defaultRegion?: RegionId` to `WidgetDefinition` in `widgetRegistry.ts`
-- [ ] Create `packages/framework-core-ui/src/LogViewer.tsx` with real component
-- [ ] Replace `LogViewerPlaceholder` in `defaultWidgets.ts` factory with `LogViewerComponent`
-- [ ] Update `LOG_VIEWER` in `defaultWidgets.ts` — set `defaultRegion: "bottom"`
-- [ ] Update `STATUS_INDICATOR` in `defaultWidgets.ts` — set `defaultRegion: "status-bar"`
-- [ ] Create `packages/framework-core-ui/src/widgetLoader.ts` with `WidgetLoader` class
-- [ ] Create `packages/framework-core-ui/src/useWidgetLoader.ts` with `useWidgetLoader` hook
-- [ ] Create `packages/framework-core-ui/sct-manifest.json` manifest for default widgets
-- [ ] Export `WidgetLoader`, `useWidgetLoader`, `SctManifest`, `SctManifestEntry` from `index.ts`
-- [ ] Add `defaultRegion` tests to `defaultWidgets.test.ts`
-- [ ] Create `LogViewer.test.tsx` with component behaviour tests
-- [ ] Create `widgetLoader.test.ts` with all loader behaviour tests
-- [ ] Create `useWidgetLoader.test.tsx` with all hook state tests
-- [ ] Update `examples/frontend/src/main.tsx` to demonstrate `useWidgetLoader`
-- [ ] Run `npm run typecheck` — no errors
+- **Codegen for TypeScript interfaces:** `SctManifestEntry` and `SctManifest` in `widgetLoader.ts` should be generated from `sct-manifest.schema.json` to ensure consistency. Pending agreement on tooling — `json-schema-to-typescript` is the proposed tool. To be resolved before the next PR that touches the manifest format.
+
+### 2.11 PR Checklist
+
+- [x] Add `defaultRegion?: RegionId` to `WidgetDefinition` in `widgetRegistry.ts`
+- [x] Create `packages/framework-core-ui/src/LogViewer.tsx` with real component
+- [x] Replace `LogViewerPlaceholder` in `defaultWidgets.ts` factory with `LogViewerComponent`
+- [x] Update `LOG_VIEWER` in `defaultWidgets.ts` — set `defaultRegion: "bottom"`
+- [x] Update `STATUS_INDICATOR` in `defaultWidgets.ts` — set `defaultRegion: "status-bar"`
+- [x] Create `packages/framework-core-ui/src/widgetLoader.ts` — `WidgetLoader implements IDisposable`, multi-manifest support
+- [x] Create `packages/framework-core-ui/src/WidgetLoaderContext.tsx` — shared loader context
+- [x] Create `packages/framework-core-ui/src/useWidgetLoader.ts` — uses context, `WidgetLoaderStatus` type, `unloadManifest` on unmount
+- [x] Create `packages/framework-core-ui/sct-manifest.json`
+- [x] Create `packages/framework-core-ui/sct-manifest.schema.json`
+- [x] Export `WidgetLoader`, `WidgetLoaderProvider`, `useWidgetLoader`, `WidgetLoaderStatus`, `SctManifest`, `SctManifestEntry` from `index.ts`
+- [x] Add `defaultRegion` tests to `defaultWidgets.test.ts`
+- [x] Create `LogViewer.test.tsx` with component behaviour tests
+- [x] Create `widgetLoader.test.ts` with all loader behaviour tests (including multi-manifest)
+- [x] Create `useWidgetLoader.test.tsx` with all hook state tests (including multi-manifest)
+- [x] Update `examples/frontend/src/main.tsx` to use `WidgetLoaderProvider` + `useWidgetLoader`
+- [x] Run `npm run typecheck` — no errors
+- [x] Run `npm run lint` — no errors
 - [ ] Run `npm run test:ui` — all tests pass
-- [ ] Run `npm run lint` — no errors
+- [ ] Codegen for `SctManifestEntry`/`SctManifest` from schema — follow-up PR
 
 ---
 
@@ -330,29 +354,38 @@ Do NOT export `LogViewerComponent` or `StatusIndicatorComponent` — they are in
 
 `EventBusProvider` does not automatically load any manifest. Framework-provided defaults (`LOG_VIEWER`, `STATUS_INDICATOR`) are available in the registry after the consuming application calls `useWidgetLoader` with the framework manifest URL. This is a one-liner in application code.
 
-**Why:** Auto-loading from the provider would make the manifest URL implicit and unconfigurable. It would also couple the provider to the file system layout of the package. Explicit `useWidgetLoader` calls are transparent, testable, and configurable. The framework's goal is to provide the mechanism, not to make invisible decisions on behalf of the application.
+**Why:** Auto-loading from the provider would make the manifest URL implicit and unconfigurable. Explicit `useWidgetLoader` calls are transparent, testable, and configurable.
 
 ### 3.3 Full Metadata in Manifest — No Eager Module Loads
 
-Manifest entries contain every `WidgetDefinition` field except `factory`. The loader constructs the full `WidgetDefinition` from the manifest without loading the component module. Only `factory` is lazy: the first `factory(options)` call triggers `import(module)[export]`.
+Manifest entries contain every `WidgetDefinition` field except `factory`. Only `factory` is lazy. Because all metadata is inlined, queries against the registry work immediately after `loadManifest` resolves.
 
-**Why:** A manifest may declare dozens of widgets. Loading all their modules at startup would increase initial bundle load time proportionally. Lazy loading means the application only pays for the modules it actually renders. Because all metadata is inlined in the manifest, queries against the registry (channel resolution, defaultRegion lookup) work immediately after `loadManifest` resolves — no module load required.
+### 3.4 Single Shared WidgetLoader via Context
 
-### 3.4 Hardcoded Manifest URLs for Now
+`useWidgetLoader` pulls the `WidgetLoader` instance from `WidgetLoaderContext` rather than creating one per component. This means multiple plugin components each calling `useWidgetLoader` with different URLs all share one loader, avoiding duplicate registrations and ensuring `unloadManifest` on one URL doesn't affect others.
 
-`useWidgetLoader` accepts an arbitrary URL. Consumers currently hardcode the path. Serving manifest files dynamically from the backend — so that installed plugins can register themselves at a well-known URL — is a follow-up task. The `manifestUrl` parameter is intentionally left open for this extension without API changes.
+### 3.5 CSS Class Names Instead of Inline Styles
+
+`LogViewer` applies styles via deterministic `jp-LogViewer-*` class names, injected once into `document.head`. This allows theming and overrides from consuming applications without specificity battles against inline styles.
+
+### 3.6 Same URL Called Twice is a No-op
+
+The old design threw `Error: manifest already loaded` on a second `loadManifest` call. The new design treats it as a no-op and coalesces concurrent in-flight requests for the same URL. This is safer for React StrictMode (which double-invokes effects) and for plugin systems where two components might independently request the same manifest.
 
 ---
 
 ## 4. Edge Cases
 
-| Scenario                                                | Behaviour                                                                                                                                      |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Manifest `module` path does not resolve                 | Factory renders `widget-load-error` component inline. No crash. `console.error` logged.                                                        |
-| Manifest `export` is not a valid React component        | Factory renders `widget-load-error`. Validation: at minimum, the export must be callable as a React component.                                 |
-| Two loaders register widgets with the same name         | Second registration is skipped with `console.warn`. First registration wins.                                                                   |
-| `dispose()` called while a factory promise is in flight | Promise resolves normally; component is returned. Widget is then unregistered. Already-rendered instances continue to display until re-render. |
-| `loadManifest` called twice on same instance            | Second call rejects immediately with `Error: manifest already loaded`. Call `dispose()` first to reload.                                       |
+| Scenario                                              | Behaviour                                                                                       |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Manifest `module` path does not resolve               | Factory renders `widget-load-error` inline. No crash. `console.error` logged.                   |
+| Manifest `export` is not a valid React component      | Factory renders `widget-load-error`.                                                            |
+| Two loaders register widgets with the same name       | Second registration skipped with `console.warn`. First wins.                                    |
+| `dispose()` called while factory promise is in flight | Promise resolves normally. Widget then unregistered. Rendered instances stable until re-render. |
+| Same URL called twice on same loader                  | Second call is a no-op. No re-fetch.                                                            |
+| Concurrent calls for same URL                         | Coalesced into one fetch.                                                                       |
+| `unloadManifest` on never-loaded URL                  | No-op.                                                                                          |
+| After `unloadManifest`, same URL reloaded             | Works — fetches again, re-registers.                                                            |
 
 ---
 
@@ -360,20 +393,24 @@ Manifest entries contain every `WidgetDefinition` field except `factory`. The lo
 
 ```
 packages/framework-core-ui/src/
-├── widgetRegistry.ts         # MODIFIED: add defaultRegion field to WidgetDefinition
-├── defaultWidgets.ts         # MODIFIED: set defaultRegion on LOG_VIEWER + STATUS_INDICATOR; real LogViewer factory
-├── LogViewer.tsx             # NEW: real LogViewer component
-├── widgetLoader.ts           # NEW: WidgetLoader class
-├── useWidgetLoader.ts        # NEW: useWidgetLoader hook
-├── index.ts                  # MODIFIED: export WidgetLoader, useWidgetLoader, SctManifest, SctManifestEntry
-├── defaultWidgets.test.ts    # MODIFIED: add defaultRegion tests
+├── widgetRegistry.ts         # MODIFIED: defaultRegion on WidgetDefinition; removed duplicate field
+├── defaultWidgets.ts         # MODIFIED: real factories; defaultRegion on both widgets
+├── LogViewer.tsx             # NEW: real LogViewer component with jp-LogViewer- CSS classes
+├── widgetLoader.ts           # NEW: WidgetLoader implements IDisposable; multi-manifest
+├── WidgetLoaderContext.tsx   # NEW: shared WidgetLoader context provider
+├── useWidgetLoader.ts        # NEW: useWidgetLoader hook; WidgetLoaderStatus type
+├── index.ts                  # MODIFIED: exports WidgetLoader, WidgetLoaderProvider,
+│                             #           useWidgetLoader, WidgetLoaderStatus,
+│                             #           SctManifest, SctManifestEntry
+├── defaultWidgets.test.ts    # MODIFIED: defaultRegion tests
 ├── LogViewer.test.tsx        # NEW: component behaviour tests
-├── widgetLoader.test.ts      # NEW: loader behaviour tests
-└── useWidgetLoader.test.tsx  # NEW: hook state tests
+├── widgetLoader.test.ts      # MODIFIED: multi-manifest tests added
+└── useWidgetLoader.test.tsx  # MODIFIED: WidgetLoaderProvider in harness; multi-manifest tests
 
 packages/framework-core-ui/
-└── sct-manifest.json         # NEW: manifest declaring LOG_VIEWER and STATUS_INDICATOR
+├── sct-manifest.json         # NEW: manifest for LogViewer + StatusIndicator
+└── sct-manifest.schema.json  # NEW: JSON Schema for manifest validation
 
 examples/frontend/src/
-└── main.tsx                  # MODIFIED: demonstrate useWidgetLoader
+└── main.tsx                  # MODIFIED: WidgetLoaderProvider + useWidgetLoader
 ```

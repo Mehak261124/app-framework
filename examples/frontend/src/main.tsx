@@ -5,29 +5,10 @@ import {
   EventBusProvider,
   WidgetRegistry,
   WidgetRegistryContext,
-  createDefaultShellLayout,
-  useEventBusStatus,
+  WidgetLoaderProvider,
   useWidgetLoader,
 } from "@app-framework/core-ui";
-import { useSimulation } from "./useSimulation";
 import "./shell.css";
-
-// ─── Dashboard widget ─────────────────────────────────────────────────────────
-
-function DashboardComponent() {
-  return function Dashboard() {
-    const { sine, log } = useSimulation();
-    const status = useEventBusStatus();
-    return (
-      <div>
-        <h1>UI shell placeholder</h1>
-        <p>Status: {status}</p>
-        <p>Latest sine: {sine?.value?.toFixed(4) ?? "n/a"}</p>
-        <p>Latest log: {log?.message ?? "n/a"}</p>
-      </div>
-    );
-  };
-}
 
 const registry = new WidgetRegistry();
 
@@ -48,7 +29,9 @@ function App() {
   return (
     <WidgetRegistryContext.Provider value={registry}>
       <EventBusProvider path="/ws">
-        <AppShell />
+        <WidgetLoaderProvider>
+          <AppShell />
+        </WidgetLoaderProvider>
       </EventBusProvider>
     </WidgetRegistryContext.Provider>
   );
