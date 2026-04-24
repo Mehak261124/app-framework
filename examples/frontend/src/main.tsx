@@ -1,31 +1,35 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-
 import {
+  ApplicationShell,
   EventBusProvider,
-  WidgetRegistryContext,
   WidgetRegistry,
+  WidgetRegistryContext,
+  createDefaultShellLayout,
   useEventBusStatus,
   useWidgetLoader,
 } from "@app-framework/core-ui";
-
 import { useSimulation } from "./useSimulation";
+import "./shell.css";
+
+// ─── Dashboard widget ─────────────────────────────────────────────────────────
+
+function DashboardComponent() {
+  return function Dashboard() {
+    const { sine, log } = useSimulation();
+    const status = useEventBusStatus();
+    return (
+      <div>
+        <h1>UI shell placeholder</h1>
+        <p>Status: {status}</p>
+        <p>Latest sine: {sine?.value?.toFixed(4) ?? "n/a"}</p>
+        <p>Latest log: {log?.message ?? "n/a"}</p>
+      </div>
+    );
+  };
+}
 
 const registry = new WidgetRegistry();
-
-function Dashboard() {
-  const { sine, log } = useSimulation();
-  const status = useEventBusStatus();
-
-  return (
-    <div>
-      <h1>UI shell placeholder</h1>
-      <p>Status: {status}</p>
-      <p>Latest sine: {sine?.value?.toFixed(4) ?? "n/a"}</p>
-      <p>Latest log: {log?.message ?? "n/a"}</p>
-    </div>
-  );
-}
 
 function AppShell() {
   const loaderStatus = useWidgetLoader("/sct-manifest.json");
@@ -33,12 +37,11 @@ function AppShell() {
   if (loaderStatus === "loading") {
     return <p>Loading widgets…</p>;
   }
-
   if (loaderStatus === "error") {
     return <p>Failed to load widget manifest.</p>;
   }
 
-  return <Dashboard />;
+  return <ApplicationShell />;
 }
 
 function App() {

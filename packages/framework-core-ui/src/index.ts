@@ -20,11 +20,24 @@ export {
   type ComponentOptions,
   type WidgetChangeEvent,
   type ChangeListener,
-  type RegionId,
   WidgetRegistry,
 } from "./widgetRegistry";
 export { WidgetLoader, type SctManifest, type SctManifestEntry } from "./widgetLoader";
 export { useWidgetLoader } from "./useWidgetLoader";
+export {
+  ApplicationShell,
+  type ApplicationShellProps,
+  type ShellClassNames,
+} from "./ApplicationShell";
+export { useShellLayoutStore, type ShellLayoutStore } from "./stores/shellStore";
+export {
+  createDefaultShellLayout,
+  type RegionId,
+  type RegionItem,
+  type RegionSetter,
+  type RegionState,
+  type ShellLayout,
+} from "./shellTypes";
 export type {
   ConnectionStatus,
   EventHeaders,
