@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 
 import { channelMatches } from "./client";
 import type { IDisposable } from "./disposable";
+import type { RegionId } from "./shellTypes";
 
 export type { IDisposable } from "./disposable";
 
@@ -31,6 +32,12 @@ export interface WidgetDefinition {
    * No structured capability tags — the description is the reasoning surface.
    */
   description: string;
+
+  /**
+   * The shell region where this widget should be auto-placed when no
+   * explicit ShellLayout is provided. Defaults to "main" if omitted.
+   */
+  defaultRegion?: RegionId;
 
   /**
    * Glob pattern matching the EventBus channels this widget handles.
@@ -120,7 +127,6 @@ export class WidgetRegistry {
       throw new Error(`Widget '${definition.name}' is already registered`);
     }
     this._widgets.set(definition.name, Object.freeze(definition));
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { factory: _factory, ...snapshot } = definition;
     this._notify({ type: "added", widget: snapshot });
 
