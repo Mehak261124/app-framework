@@ -168,11 +168,6 @@ interface ApplicationShellProps {
    * Widgets with no defaultRegion are auto-placed into main.
    */
   initialLayout?: ShellLayout;
-  /**
-   * Kept temporarily — will be removed once Zustand refactor lands,
-   * which removes the need to mount context consumers inside the shell.
-   */
-  children?: React.ReactNode;
   /** Optional CSS class overrides for individual shell regions. */
   classNames?: ShellClassNames;
 }
@@ -180,16 +175,7 @@ interface ApplicationShellProps {
 
 `WidgetRegistry` is **not** a prop — the shell calls `useWidgetRegistryInstance()` to read it from the `WidgetRegistryContext` already in the tree. This is the established framework pattern: the application creates one `WidgetRegistry`, passes it to `EventBusProvider`, and all downstream components — including `ApplicationShell` — consume it from context. Passing it again as a prop would require every app to supply the same instance twice.
 
-The component provides ONE React context:
-
-```typescript
-interface ShellLayoutContextValue {
-  layout: ShellLayout;
-  setLayout: (updater: (prev: ShellLayout) => ShellLayout) => void;
-}
-```
-
-- `ShellLayoutContext` — exposes `layout` (current snapshot) and `setLayout` (functional updater). Read by `useShellLayout()`.
+`ShellLayout` state is managed by `useShellLayoutStore` (Zustand). Any component can read or update the layout by calling `useShellLayout()` directly — no Provider needed.
 
 **Auto-placement on mount:** When `initialLayout` is omitted, `ApplicationShell` calls `widgetRegistry.list()`, filters widgets that have a `defaultRegion` set, and constructs a `ShellLayout` where each region's `items` array contains one `RegionItem` per matching widget. The `RegionItem` is built as:
 
@@ -340,7 +326,7 @@ The shell is a renderer. Widgets with `defaultRegion` set are auto-placed on mou
       - [ ] Export all types from index.ts
 
 - [ ] Task 2: ApplicationShell component
-      - [ ] ShellLayoutContext with ShellLayoutContextValue { layout, setLayout }
+      - [ ] Initialize Zustand store with layout on mount
       - [ ] ApplicationShell props: initialLayout? only — read WidgetRegistry via useWidgetRegistryInstance()
       - [ ] Merge initialLayout over createDefaultShellLayout() on mount
       - [ ] If initialLayout omitted: call widgetRegistry.list(), filter widgets with defaultRegion, build initial ShellLayout
@@ -360,12 +346,12 @@ The shell is a renderer. Widgets with `defaultRegion` set are auto-placed on mou
       - [ ] ShellStatusBar — renders region: status-bar items, always visible
 
 - [ ] Task 4: useShellLayout hook
-      - [ ] useShellLayout(): [ShellLayout, setLayout] — subscribes to ShellLayoutContext, re-renders on change
+      - [ ] useShellLayout(): [ShellLayout, setLayout] — subscribes to Zustand store, re-renders on change
       - [ ] Tests: initial layout, layout update re-render, toggle visibility via setLayout
 
 - [ ] Task 5: Public exports
       - [ ] Export ApplicationShell, useShellLayout from index.ts
-      - [ ] Export RegionId, RegionItem, RegionState, ShellLayout, ShellLayoutContextValue, createDefaultShellLayout from index.ts
+      - [ ] Export RegionId, RegionItem, RegionState, ShellLayout, useShellLayoutStore, createDefaultShellLayout from index.ts
       - [ ] Note: defaultRegion field is defined in widget registry spec — ApplicationShell consumes it but does not define it
 
 - [ ] Task 6: Quality gate

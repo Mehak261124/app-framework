@@ -1,22 +1,18 @@
-import { useContext } from "react";
-
-import { ShellLayoutContext } from "./ApplicationShell";
+import { useShellLayoutStore } from "./shellStore";
 import type { ShellLayout, ShellLayoutContextValue } from "./shellTypes";
 
 /**
- * Returns the current {@link ShellLayout} and a functional updater from
- * {@link ShellLayoutContext}.
+ * Returns the current {@link ShellLayout} and a functional updater.
  *
  * Re-renders whenever the shell layout changes.
  * Follows the same `[value, setter]` tuple pattern as `React.useState`.
  *
- * @returns Tuple of `[layout, setLayout]` where `setLayout` is a functional
- *   updater that receives the previous layout and returns the next layout.
- * @throws Error when called outside `<ApplicationShell>`.
+ * Backed by a Zustand store — can be called from any component, no Provider needed.
+ *
+ * @returns Tuple of `[layout, setLayout]`.
  * @example
  * ```tsx
  * const [layout, setLayout] = useShellLayout();
- * // Toggle sidebar-left:
  * setLayout((prev) => ({
  *   ...prev,
  *   regions: {
@@ -30,9 +26,7 @@ import type { ShellLayout, ShellLayoutContextValue } from "./shellTypes";
  * ```
  */
 export function useShellLayout(): [ShellLayout, ShellLayoutContextValue["setLayout"]] {
-  const ctx = useContext(ShellLayoutContext);
-  if (!ctx) {
-    throw new Error("useShellLayout must be called inside <ApplicationShell>.");
-  }
-  return [ctx.layout, ctx.setLayout];
+  const layout = useShellLayoutStore((state) => state.layout);
+  const setLayout = useShellLayoutStore((state) => state.setLayout);
+  return [layout, setLayout];
 }

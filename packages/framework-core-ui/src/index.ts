@@ -24,11 +24,10 @@ export {
 } from "./widgetRegistry";
 export {
   ApplicationShell,
-  ShellLayoutContext,
   type ApplicationShellProps,
   type ShellClassNames,
 } from "./ApplicationShell";
-export { useShellLayout } from "./useShellLayout";
+export { useShellLayoutStore } from "./shellStore";
 export {
   createDefaultShellLayout,
   type RegionId,
@@ -36,7 +35,6 @@ export {
   type RegionSetter,
   type RegionState,
   type ShellLayout,
-  type ShellLayoutContextValue,
 } from "./shellTypes";
 export type {
   ConnectionStatus,

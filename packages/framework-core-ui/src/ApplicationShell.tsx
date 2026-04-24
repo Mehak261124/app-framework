@@ -1,5 +1,6 @@
-import React, { createContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
+import { useShellLayoutStore } from "./shellStore";
 import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
 import {
   ShellBottom,
@@ -15,21 +16,7 @@ import {
   type RegionSetter,
   type RegionState,
   type ShellLayout,
-  type ShellLayoutContextValue,
 } from "./shellTypes";
-
-// ─── ShellLayoutContext ───────────────────────────────────────────────────────
-
-/**
- * React context providing the current {@link ShellLayout} and a functional
- * updater.  Consumed by region sub-components and the `useShellLayout` hook.
- *
- * @example
- * ```tsx
- * const { layout, setLayout } = useContext(ShellLayoutContext)!;
- * ```
- */
-export const ShellLayoutContext = createContext<ShellLayoutContextValue | null>(null);
 
 // ─── Non-togglable correction ─────────────────────────────────────────────────
 
@@ -40,14 +27,6 @@ const NON_TOGGLABLE: ReadonlySet<RegionId> = new Set<RegionId>([
   "status-bar",
 ]);
 
-/**
- * Ensures non-togglable regions (`header`, `main`, `status-bar`) have
- * `visible: true`.  Returns a new layout object if any correction was needed,
- * otherwise returns the same reference.
- *
- * @param layout - Layout to validate.
- * @returns Corrected layout.
- */
 function applyNonTogglableCorrection(layout: ShellLayout): ShellLayout {
   let corrected = false;
   const regions = { ...layout.regions } as Record<RegionId, RegionState>;
@@ -67,15 +46,12 @@ function applyNonTogglableCorrection(layout: ShellLayout): ShellLayout {
 
 // ─── ShellClassNames ──────────────────────────────────────────────────────────
 
-/**
- * Optional CSS class overrides for each shell region and the content wrapper.
- */
 export interface ShellClassNames {
   /** Applied to the root shell layout div. */
   layout?: string;
   /** Applied to the {@link ShellHeader} element. */
   header?: string;
-  /** Applied to the horizontal content wrapper div (left sidebar + main + right sidebar). */
+  /** Applied to the horizontal content wrapper div. */
   content?: string;
   /** Applied to the left {@link ShellSidebar} element. */
   leftSidebar?: string;
@@ -91,25 +67,14 @@ export interface ShellClassNames {
 
 // ─── ApplicationShellProps ───────────────────────────────────────────────────
 
-/**
- * Props for {@link ApplicationShell}.
- */
 export interface ApplicationShellProps {
   /**
-   * Explicit layout spec.  When provided, merged over
-   * {@link createDefaultShellLayout} — any region not specified in
-   * `initialLayout` falls back to its default state.  Auto-placement from the
-   * widget registry is skipped.  If omitted, `ApplicationShell` builds the
-   * initial layout by grouping registered widgets by their `defaultRegion`
-   * field.  Widgets with no `defaultRegion` are auto-placed into the `main` region.
+   * Explicit layout spec. When provided, merged over
+   * {@link createDefaultShellLayout} — auto-placement is skipped.
+   * If omitted, builds layout from WidgetRegistry defaultRegion fields.
+   * Widgets with no defaultRegion are auto-placed into main.
    */
   initialLayout?: ShellLayout;
-  /**
-   * Nodes rendered inside {@link ShellLayoutContext.Provider} but outside the
-   * visual shell layout.  Use this to mount context consumers (e.g., hooks)
-   * that need access to the shell layout without appearing in the DOM.
-   */
-  children?: React.ReactNode;
   /** Optional CSS class overrides for individual shell regions. */
   classNames?: ShellClassNames;
 }
@@ -117,78 +82,68 @@ export interface ApplicationShellProps {
 // ─── ApplicationShell ─────────────────────────────────────────────────────────
 
 /**
- * Root shell component that owns the {@link ShellLayout} state and provides it
- * via {@link ShellLayoutContext}.
+ * Root shell component. Owns layout state via Zustand store.
  *
  * When `initialLayout` is omitted the shell builds its layout from the
- * {@link WidgetRegistry} and continues to react to registry changes after
- * mount.  When `initialLayout` is provided that layout is used as-is (after
- * non-togglable correction) and registry changes are ignored.
+ * {@link WidgetRegistry}. When provided, that layout is used as-is after
+ * non-togglable correction.
  *
- * Non-togglable regions (`header`, `main`, `status-bar`) are silently forced
- * to `visible: true` regardless of what the layout specifies.
- *
- * @param props - {@link ApplicationShellProps}
- * @returns A layout container wrapped in {@link ShellLayoutContext.Provider}.
  * @example
  * ```tsx
  * <WidgetRegistryContext.Provider value={registry}>
- *   <ApplicationShell>
- *     <MyContent />
- *   </ApplicationShell>
+ *   <ApplicationShell />
  * </WidgetRegistryContext.Provider>
  * ```
  */
 export function ApplicationShell({
   initialLayout,
-  children,
   classNames,
 }: ApplicationShellProps): JSX.Element {
   const registry = useWidgetRegistryInstance();
   const isControlled = initialLayout !== undefined;
+  const { layout, setLayout } = useShellLayoutStore();
 
-  const [layout, setLayout] = useState<ShellLayout>(() => {
+  // Initialize layout on mount
+  useEffect(() => {
     if (isControlled) {
       const base = createDefaultShellLayout();
       const merged: ShellLayout = {
         ...base,
         regions: { ...base.regions, ...initialLayout.regions },
       };
-      return applyNonTogglableCorrection(merged);
+      useShellLayoutStore.setState({ layout: applyNonTogglableCorrection(merged) });
+    } else {
+      // Build layout from registry.
+      // TODO: Remove once AI layout generation or layout editor is available.
+      const base = createDefaultShellLayout();
+      const regions = { ...base.regions } as Record<RegionId, RegionState>;
+
+      for (const widget of registry.list()) {
+        const region = widget.defaultRegion ?? "main";
+        const newItem: RegionItem = {
+          id: widget.name,
+          type: widget.name,
+          props: {},
+          order: 0,
+        };
+        regions[region] = {
+          ...regions[region],
+          items: [...regions[region].items, newItem],
+        };
+      }
+
+      useShellLayoutStore.setState({
+        layout: applyNonTogglableCorrection({ ...base, regions }),
+      });
     }
+  }, []);
 
-    // Build layout from registry.
-    // TODO: This auto-placement from registry should be removed once AI layout
-    // generation or a layout editor is available to replace it.
-    const base = createDefaultShellLayout();
-    const regions = { ...base.regions } as Record<RegionId, RegionState>;
-
-    for (const widget of registry.list()) {
-      const region = widget.defaultRegion ?? "main";
-      const newItem: RegionItem = {
-        id: widget.name,
-        type: widget.name,
-        props: {},
-        order: 0,
-      };
-      regions[region] = {
-        ...regions[region],
-        items: [...regions[region].items, newItem],
-      };
-    }
-
-    return applyNonTogglableCorrection({ ...base, regions });
-  });
-
-  // Post-mount auto-placement: subscribe to registry changes when no
-  // explicit initialLayout was provided.
+  // Subscribe to registry changes
   useEffect(() => {
     const handle = registry.onChange((event) => {
       if (event.type === "added") {
         if (isControlled) return;
         // FIXME: Auto-injecting widgets on registration should be removed at a later stage.
-        // The registry should only catalog available widget types; the user/consumer
-        // should decide what gets placed in the layout and when.
         setLayout((prev) => {
           const region = event.widget.defaultRegion ?? "main";
           const newItem: RegionItem = {
@@ -209,8 +164,7 @@ export function ApplicationShell({
           };
         });
       } else if (event.type === "removed") {
-        // Always remove widgets from layout when unregistered,
-        // even in controlled mode — a removed widget cannot render.
+        // Always remove — even in controlled mode.
         setLayout((prev) => {
           const updatedRegions = { ...prev.regions } as Record<RegionId, RegionState>;
           for (const regionId of Object.keys(updatedRegions) as RegionId[]) {
@@ -227,7 +181,7 @@ export function ApplicationShell({
     });
 
     return () => handle.dispose();
-  }, [registry, isControlled]);
+  }, [registry, isControlled, setLayout]);
 
   const regionSetters = useMemo(() => {
     const ids: RegionId[] = [
@@ -247,59 +201,56 @@ export function ApplicationShell({
         }));
     }
     return map;
-  }, []); // setLayout from useState is stable — empty deps is correct
+  }, [setLayout]);
 
   return (
-    <ShellLayoutContext.Provider value={{ layout, setLayout }}>
+    <div
+      className={
+        ["sct-ApplicationShell", classNames?.layout].filter(Boolean).join(" ") ||
+        undefined
+      }
+      data-testid="shell-layout"
+    >
+      <ShellHeader
+        region={layout.regions.header}
+        setRegion={regionSetters["header"]}
+        className={classNames?.header}
+      />
       <div
         className={
-          ["sct-ApplicationShell", classNames?.layout].filter(Boolean).join(" ") ||
-          undefined
+          ["sct-ApplicationShell-Content", classNames?.content]
+            .filter(Boolean)
+            .join(" ") || undefined
         }
-        data-testid="shell-layout"
       >
-        <ShellHeader
-          region={layout.regions.header}
-          setRegion={regionSetters["header"]}
-          className={classNames?.header}
+        <ShellSidebar
+          side="left"
+          region={layout.regions["sidebar-left"]}
+          setRegion={regionSetters["sidebar-left"]}
+          className={classNames?.leftSidebar}
         />
-        <div
-          className={
-            ["sct-ApplicationShell-Content", classNames?.content]
-              .filter(Boolean)
-              .join(" ") || undefined
-          }
-        >
-          <ShellSidebar
-            side="left"
-            region={layout.regions["sidebar-left"]}
-            setRegion={regionSetters["sidebar-left"]}
-            className={classNames?.leftSidebar}
-          />
-          <ShellMain
-            region={layout.regions.main}
-            setRegion={regionSetters["main"]}
-            className={classNames?.main}
-          />
-          <ShellSidebar
-            side="right"
-            region={layout.regions["sidebar-right"]}
-            setRegion={regionSetters["sidebar-right"]}
-            className={classNames?.rightSidebar}
-          />
-        </div>
-        <ShellBottom
-          region={layout.regions.bottom}
-          setRegion={regionSetters["bottom"]}
-          className={classNames?.bottom}
+        <ShellMain
+          region={layout.regions.main}
+          setRegion={regionSetters["main"]}
+          className={classNames?.main}
         />
-        <ShellStatusBar
-          region={layout.regions["status-bar"]}
-          setRegion={regionSetters["status-bar"]}
-          className={classNames?.statusBar}
+        <ShellSidebar
+          side="right"
+          region={layout.regions["sidebar-right"]}
+          setRegion={regionSetters["sidebar-right"]}
+          className={classNames?.rightSidebar}
         />
       </div>
-      {children}
-    </ShellLayoutContext.Provider>
+      <ShellBottom
+        region={layout.regions.bottom}
+        setRegion={regionSetters["bottom"]}
+        className={classNames?.bottom}
+      />
+      <ShellStatusBar
+        region={layout.regions["status-bar"]}
+        setRegion={regionSetters["status-bar"]}
+        className={classNames?.statusBar}
+      />
+    </div>
   );
 }

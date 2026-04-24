@@ -1,12 +1,14 @@
 import React, { useEffect } from "react";
 import { act, create } from "react-test-renderer";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { ApplicationShell } from "./ApplicationShell";
 import { WidgetRegistryContext } from "./WidgetRegistryContext";
 import { WidgetRegistry } from "./widgetRegistry";
 import type { ShellLayout } from "./shellTypes";
+import { createDefaultShellLayout } from "./shellTypes";
 import { useShellLayout } from "./useShellLayout";
+import { useShellLayoutStore } from "./shellStore";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,11 +16,15 @@ function makeRegistry(): WidgetRegistry {
   return new WidgetRegistry();
 }
 
+// Reset Zustand store before each test — store is a singleton
+beforeEach(() => {
+  useShellLayoutStore.setState({ layout: createDefaultShellLayout() });
+});
+
 // ─── useShellLayout tests ─────────────────────────────────────────────────────
 
 describe("useShellLayout", () => {
   it("returns initial layout with all 6 regions", () => {
-    const registry = makeRegistry();
     const seen: ShellLayout[] = [];
 
     function Probe(): null {
@@ -31,10 +37,9 @@ describe("useShellLayout", () => {
 
     act(() => {
       create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <ApplicationShell>
-            <Probe />
-          </ApplicationShell>
+        <WidgetRegistryContext.Provider value={makeRegistry()}>
+          <ApplicationShell />
+          <Probe />
         </WidgetRegistryContext.Provider>,
       );
     });
@@ -51,7 +56,6 @@ describe("useShellLayout", () => {
   });
 
   it("calling setLayout with identity updater does not mutate the layout reference", () => {
-    const registry = makeRegistry();
     const seen: ShellLayout[] = [];
     let capturedSetter: ((updater: (prev: ShellLayout) => ShellLayout) => void) | null =
       null;
@@ -69,10 +73,9 @@ describe("useShellLayout", () => {
 
     act(() => {
       create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <ApplicationShell>
-            <Probe />
-          </ApplicationShell>
+        <WidgetRegistryContext.Provider value={makeRegistry()}>
+          <ApplicationShell />
+          <Probe />
         </WidgetRegistryContext.Provider>,
       );
     });
@@ -80,17 +83,14 @@ describe("useShellLayout", () => {
     const layoutBefore = seen.at(-1)!;
     expect(capturedSetter).not.toBeNull();
 
-    // Identity updater: returning the same object should not cause a re-render
     act(() => {
       capturedSetter!((prev) => prev);
     });
 
-    // Layout reference should be the same — no extra render triggered
     expect(seen.at(-1)).toBe(layoutBefore);
   });
 
   it("setLayout updater mutates layout — sidebar-right becomes visible", () => {
-    const registry = makeRegistry();
     const seen: ShellLayout[] = [];
     let capturedSetter: ((updater: (prev: ShellLayout) => ShellLayout) => void) | null =
       null;
@@ -108,15 +108,13 @@ describe("useShellLayout", () => {
 
     act(() => {
       create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <ApplicationShell>
-            <Probe />
-          </ApplicationShell>
+        <WidgetRegistryContext.Provider value={makeRegistry()}>
+          <ApplicationShell />
+          <Probe />
         </WidgetRegistryContext.Provider>,
       );
     });
 
-    // sidebar-right starts as hidden
     expect(seen.at(-1)!.regions["sidebar-right"].visible).toBe(false);
 
     act(() => {
@@ -136,7 +134,6 @@ describe("useShellLayout", () => {
   });
 
   it("re-renders on layout change", () => {
-    const registry = makeRegistry();
     let renderCount = 0;
     let capturedSetter: ((updater: (prev: ShellLayout) => ShellLayout) => void) | null =
       null;
@@ -152,10 +149,9 @@ describe("useShellLayout", () => {
 
     act(() => {
       create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <ApplicationShell>
-            <Probe />
-          </ApplicationShell>
+        <WidgetRegistryContext.Provider value={makeRegistry()}>
+          <ApplicationShell />
+          <Probe />
         </WidgetRegistryContext.Provider>,
       );
     });
@@ -167,10 +163,7 @@ describe("useShellLayout", () => {
         ...prev,
         regions: {
           ...prev.regions,
-          bottom: {
-            ...prev.regions.bottom,
-            visible: true,
-          },
+          bottom: { ...prev.regions.bottom, visible: true },
         },
       }));
     });
@@ -178,8 +171,8 @@ describe("useShellLayout", () => {
     expect(renderCount).toBeGreaterThan(countAfterMount);
   });
 
-  it("throws when called outside ApplicationShell", () => {
-    function BadProbe(): null {
+  it("useShellLayout works outside ApplicationShell — no throw with Zustand", () => {
+    function Probe(): null {
       useShellLayout();
       return null;
     }
@@ -188,10 +181,10 @@ describe("useShellLayout", () => {
       act(() => {
         create(
           <WidgetRegistryContext.Provider value={new WidgetRegistry()}>
-            <BadProbe />
+            <Probe />
           </WidgetRegistryContext.Provider>,
         );
       });
-    }).toThrow("useShellLayout must be called inside <ApplicationShell>.");
+    }).not.toThrow();
   });
 });
