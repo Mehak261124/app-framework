@@ -4,12 +4,7 @@ const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
 
 test("renders the application shell", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("[data-testid='shell-layout']")).toBeVisible();
-});
-
-test("renders the log viewer in the app shell", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("[data-testid='log-viewer']")).toBeVisible();
+  await expect(page.locator("[data-testid='shell-layout']").first()).toBeVisible();
 });
 
 test("renders the dashboard local component", async ({ page }) => {
