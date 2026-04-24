@@ -1,9 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-import { EventBusProvider, useEventBusStatus } from "@app-framework/core-ui";
+import {
+  EventBusProvider,
+  WidgetRegistryContext,
+  WidgetRegistry,
+  useEventBusStatus,
+  useWidgetLoader,
+} from "@app-framework/core-ui";
 
 import { useSimulation } from "./useSimulation";
+
+const registry = new WidgetRegistry();
 
 function Dashboard() {
   const { sine, log } = useSimulation();
@@ -19,11 +27,27 @@ function Dashboard() {
   );
 }
 
+function AppShell() {
+  const loaderStatus = useWidgetLoader("/sct-manifest.json");
+
+  if (loaderStatus === "loading") {
+    return <p>Loading widgets…</p>;
+  }
+
+  if (loaderStatus === "error") {
+    return <p>Failed to load widget manifest.</p>;
+  }
+
+  return <Dashboard />;
+}
+
 function App() {
   return (
-    <EventBusProvider path="/ws">
-      <Dashboard />
-    </EventBusProvider>
+    <WidgetRegistryContext.Provider value={registry}>
+      <EventBusProvider path="/ws">
+        <AppShell />
+      </EventBusProvider>
+    </WidgetRegistryContext.Provider>
   );
 }
 

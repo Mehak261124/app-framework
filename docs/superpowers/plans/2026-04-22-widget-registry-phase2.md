@@ -29,7 +29,7 @@ Every consumer calls `registry.register(MY_WIDGET)` in application code. There i
 Replace the `LogViewerPlaceholder` in `defaultWidgets.ts` with a functional React component that uses framework event bus primitives. The component must:
 
 - Accept `parameters: { maxLines?: number; showTimestamps?: boolean; wrapLines?: boolean }` via `ComponentOptions`.
-- Subscribe to the channel it was placed on using `useChannel` — the channel is passed as a prop by `RegionItemRenderer` via `item.props.channel`.
+- Subscribe to the channel it was placed on using `useEventBusClient` and `client.subscribe()` — the channel is passed as a prop.`useChannel` is not used because it only replays the last event; the LogViewer needs the full event stream to accumulate log history.
 - Display log lines in a scrolling container, newest at bottom.
 - Respect `maxLines` — trim oldest entries when exceeded.
 - Optionally show timestamp prefix when `showTimestamps: true`.

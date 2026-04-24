@@ -5,6 +5,9 @@ import type { IDisposable } from "./disposable";
 
 export type { IDisposable } from "./disposable";
 
+/** Identifies a named layout region, e.g. `"bottom"`, `"status-bar"`, `"main"`. */
+export type RegionId = string;
+
 // ─── ComponentOptions ─────────────────────────────────────────────────────────
 
 /**
@@ -57,6 +60,15 @@ export interface WidgetDefinition {
    * order.
    */
   priority: number;
+
+  /**
+   * The layout region this widget prefers by default, e.g. `"bottom"`,
+   * `"status-bar"`, `"main"`.
+   *
+   * Consumers may override this at placement time. When absent, the host
+   * application decides where to place the widget.
+   */
+  defaultRegion?: RegionId;
 
   /**
    * JSON schema of user-configurable parameters displayed in the layout editor.

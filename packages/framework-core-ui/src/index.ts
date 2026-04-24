@@ -20,8 +20,11 @@ export {
   type ComponentOptions,
   type WidgetChangeEvent,
   type ChangeListener,
+  type RegionId,
   WidgetRegistry,
 } from "./widgetRegistry";
+export { WidgetLoader, type SctManifest, type SctManifestEntry } from "./widgetLoader";
+export { useWidgetLoader } from "./useWidgetLoader";
 export type {
   ConnectionStatus,
   EventHeaders,
