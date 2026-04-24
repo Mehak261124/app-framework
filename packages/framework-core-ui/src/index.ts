@@ -27,7 +27,7 @@ export {
   type ApplicationShellProps,
   type ShellClassNames,
 } from "./ApplicationShell";
-export { useShellLayoutStore } from "./shellStore";
+export { useShellLayoutStore, type ShellLayoutStore } from "./stores/shellStore";
 export {
   createDefaultShellLayout,
   type RegionId,

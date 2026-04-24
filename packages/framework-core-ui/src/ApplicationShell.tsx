@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
+import { mergeClassNames } from "./helpers";
 
-import { useShellLayoutStore } from "./shellStore";
+import { useShellLayoutStore } from "./stores/shellStore";
 import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
 import {
   ShellBottom,
@@ -20,7 +21,14 @@ import {
 
 // ─── Non-togglable correction ─────────────────────────────────────────────────
 
-/** Regions that must always be visible — silently corrected if `false`. */
+/**
+ * Ensures non-togglable regions (`header`, `main`, `status-bar`) have
+ * `visible: true`.  Returns a new layout object if any correction was needed,
+ * otherwise returns the same reference.
+ *
+ * @param layout - Layout to validate.
+ * @returns Corrected layout.
+ */
 const NON_TOGGLABLE: ReadonlySet<RegionId> = new Set<RegionId>([
   "header",
   "main",
@@ -46,6 +54,9 @@ function applyNonTogglableCorrection(layout: ShellLayout): ShellLayout {
 
 // ─── ShellClassNames ──────────────────────────────────────────────────────────
 
+/**
+ * Optional CSS class overrides for each shell region and the content wrapper.
+ */
 export interface ShellClassNames {
   /** Applied to the root shell layout div. */
   layout?: string;
@@ -67,6 +78,9 @@ export interface ShellClassNames {
 
 // ─── ApplicationShellProps ───────────────────────────────────────────────────
 
+/**
+ * Props for {@link ApplicationShell}.
+ */
 export interface ApplicationShellProps {
   /**
    * Explicit layout spec. When provided, merged over
@@ -88,6 +102,8 @@ export interface ApplicationShellProps {
  * {@link WidgetRegistry}. When provided, that layout is used as-is after
  * non-togglable correction.
  *
+ * @param props - {@link ApplicationShellProps}
+ * @returns The full shell layout tree with header, sidebars, main, bottom, and status-bar regions.
  * @example
  * ```tsx
  * <WidgetRegistryContext.Provider value={registry}>
@@ -205,10 +221,7 @@ export function ApplicationShell({
 
   return (
     <div
-      className={
-        ["sct-ApplicationShell", classNames?.layout].filter(Boolean).join(" ") ||
-        undefined
-      }
+      className={mergeClassNames("sct-ApplicationShell", classNames?.layout)}
       data-testid="shell-layout"
     >
       <ShellHeader
@@ -217,11 +230,7 @@ export function ApplicationShell({
         className={classNames?.header}
       />
       <div
-        className={
-          ["sct-ApplicationShell-Content", classNames?.content]
-            .filter(Boolean)
-            .join(" ") || undefined
-        }
+        className={mergeClassNames("sct-ApplicationShell-Content", classNames?.content)}
       >
         <ShellSidebar
           side="left"

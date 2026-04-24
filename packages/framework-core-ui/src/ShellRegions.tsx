@@ -1,14 +1,8 @@
 import React, { lazy, Suspense } from "react";
+import { mergeClassNames } from "./helpers";
 
 import type { RegionItem, RegionSetter, RegionState } from "./shellTypes";
 import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-/** Merges a default class name with an optional consumer class name. */
-function mergeClassNames(base: string, extra?: string): string | undefined {
-  return [base, extra].filter(Boolean).join(" ") || undefined;
-}
 
 // ─── RegionItemRenderer ───────────────────────────────────────────────────────
 
