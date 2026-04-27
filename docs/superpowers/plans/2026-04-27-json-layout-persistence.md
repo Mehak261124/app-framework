@@ -24,12 +24,14 @@ class instances, no circular references. The data model is ready for persistence
 wires it up.
 
 **What this solves:**
+
 - Layout survives page reloads
 - Panel open/closed state is restored (sidebar, bottom panel)
 - Widget placements and their props are restored
 - No server required — runs entirely in the browser
 
 **What this does not solve (out of scope for now):**
+
 - Sharing layouts between team members
 - Server-side layout storage
 - File-based import/export (JSON files)
@@ -41,6 +43,7 @@ wires it up.
 ## 2. Scope
 
 **In scope:**
+
 - Wrap the Zustand layout store with `persist` middleware using `localStorage`
 - Auto-save layout on every change
 - Auto-load layout on startup
@@ -49,6 +52,7 @@ wires it up.
   incompatible schema version
 
 **Out of scope:**
+
 - Server-side storage
 - File import/export
 - Layout sharing
@@ -75,8 +79,8 @@ const useShellLayoutStore = create<ShellLayoutStore>()(
     }),
     {
       name: "app-framework:shell-layout", // localStorage key
-      version: 1,                          // schema version
-      migrate,                             // migration function (see Section 5)
+      version: 1, // schema version
+      migrate, // migration function (see Section 5)
     },
   ),
 );
@@ -101,9 +105,7 @@ The full `ShellLayout` object is stored — all six regions, their `visible` sta
         "sidebar-left": { "visible": true, "items": [] },
         "main": {
           "visible": true,
-          "items": [
-            { "id": "LogViewer", "type": "LogViewer", "props": {}, "order": 0 }
-          ]
+          "items": [{ "id": "LogViewer", "type": "LogViewer", "props": {}, "order": 0 }]
         },
         "sidebar-right": { "visible": false, "items": [] },
         "bottom": { "visible": false, "items": [] },
@@ -117,11 +119,11 @@ The full `ShellLayout` object is stored — all six regions, their `visible` sta
 
 ### 3.4 First load vs subsequent loads
 
-| Situation | Behaviour |
-|---|---|
-| No stored layout | Falls back to `createDefaultShellLayout()` |
-| Stored layout found, version matches | Restores stored layout |
-| Stored layout found, version mismatch | Runs migration function (see Section 5) |
+| Situation                                | Behaviour                                  |
+| ---------------------------------------- | ------------------------------------------ |
+| No stored layout                         | Falls back to `createDefaultShellLayout()` |
+| Stored layout found, version matches     | Restores stored layout                     |
+| Stored layout found, version mismatch    | Runs migration function (see Section 5)    |
 | Stored layout is corrupted / unparseable | Falls back to `createDefaultShellLayout()` |
 
 ### 3.5 Non-togglable region correction
@@ -168,6 +170,7 @@ function migrate(persistedState: unknown, version: number): ShellLayoutStore {
 ```
 
 **Rules for future migrations:**
+
 - Increment `SHELL_LAYOUT_STORAGE_VERSION` whenever `ShellLayout`, `RegionItem`, or `RegionState`
   changes in a breaking way
 - Add a migration branch in `migrate()` for every version increment
