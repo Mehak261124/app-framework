@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { render, act } from "@testing-library/react";
+import React, { useEffect, act } from "react";
+import { render } from "vitest-browser-react";
 import { describe, expect, it } from "vitest";
 
 import { EventBusProvider } from "./EventBusContext";
@@ -36,7 +36,7 @@ function parseSentMessages(socket: FakeWebSocket): unknown[] {
 }
 
 describe("framework-core-ui hooks", () => {
-  it("useChannel returns latest merged payload and unsubscribes on unmount", () => {
+  it("useChannel returns latest merged payload and unsubscribes on unmount", async () => {
     const socket = new FakeWebSocket();
     const seen: Array<Record<string, unknown> | null> = [];
     let setMounted: ((value: boolean) => void) | null = null;
@@ -61,9 +61,9 @@ describe("framework-core-ui hooks", () => {
       );
     }
 
-    const { unmount } = render(<Host />);
+    const { unmount } = await render(<Host />);
 
-    act(() => {
+    await act(async () => {
       socket.open();
     });
 
@@ -72,7 +72,7 @@ describe("framework-core-ui hooks", () => {
       channel: "sensor/temperature",
     });
 
-    act(() => {
+    await act(async () => {
       socket.receive(
         JSON.stringify({
           channel: "sensor/temperature",
@@ -89,7 +89,7 @@ describe("framework-core-ui hooks", () => {
       timestamp: 123,
     });
 
-    act(() => {
+    await act(async () => {
       setMounted!(false);
     });
 
@@ -98,10 +98,10 @@ describe("framework-core-ui hooks", () => {
       channel: "sensor/temperature",
     });
 
-    unmount();
+    await unmount();
   });
 
-  it("useChannel handles non-object payloads", () => {
+  it("useChannel handles non-object payloads", async () => {
     const socket = new FakeWebSocket();
     const seen: Array<Record<string, unknown> | null> = [];
 
@@ -113,13 +113,13 @@ describe("framework-core-ui hooks", () => {
       return null;
     }
 
-    render(
+    await render(
       <EventBusProvider path="/ws" webSocketFactory={() => socket}>
         <Probe />
       </EventBusProvider>,
     );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       socket.receive(
         JSON.stringify({
@@ -137,7 +137,7 @@ describe("framework-core-ui hooks", () => {
     });
   });
 
-  it("usePublish sends publish actions over websocket", () => {
+  it("usePublish sends publish actions over websocket", async () => {
     const socket = new FakeWebSocket();
     let publishFn: ((channel: string, payload: unknown) => void) | null = null;
 
@@ -149,14 +149,17 @@ describe("framework-core-ui hooks", () => {
       return null;
     }
 
-    render(
+    await render(
       <EventBusProvider path="/ws" webSocketFactory={() => socket}>
         <Probe />
       </EventBusProvider>,
     );
 
-    act(() => {
+    await act(async () => {
       socket.open();
+    });
+
+    await act(async () => {
       publishFn!("commands/reset", { target: "sensor-1" });
     });
 
@@ -167,7 +170,7 @@ describe("framework-core-ui hooks", () => {
     });
   });
 
-  it("useEventBusStatus tracks connection status changes", () => {
+  it("useEventBusStatus tracks connection status changes", async () => {
     const socket = new FakeWebSocket();
     const statuses: string[] = [];
 
@@ -179,55 +182,55 @@ describe("framework-core-ui hooks", () => {
       return null;
     }
 
-    render(
+    await render(
       <EventBusProvider path="/ws" webSocketFactory={() => socket}>
         <Probe />
       </EventBusProvider>,
     );
 
-    act(() => {
+    await act(async () => {
       socket.open();
     });
 
     expect(statuses).toContain("connecting");
     expect(statuses).toContain("connected");
 
-    act(() => {
+    await act(async () => {
       socket.close();
     });
 
     expect(statuses).toContain("disconnected");
   });
 
-  it("throws when useChannel is used outside EventBusProvider", () => {
+  it("throws when useChannel is used outside EventBusProvider", async () => {
     function Probe(): JSX.Element | null {
       useChannel("sensor/temperature");
       return null;
     }
 
-    expect(() => render(<Probe />)).toThrow(
+    await expect(render(<Probe />)).rejects.toThrow(
       "EventBus hooks must be used inside EventBusProvider.",
     );
   });
 
-  it("throws when usePublish is used outside EventBusProvider", () => {
+  it("throws when usePublish is used outside EventBusProvider", async () => {
     function Probe(): JSX.Element | null {
       usePublish();
       return null;
     }
 
-    expect(() => render(<Probe />)).toThrow(
+    await expect(render(<Probe />)).rejects.toThrow(
       "EventBus hooks must be used inside EventBusProvider.",
     );
   });
 
-  it("throws when useEventBusStatus is used outside EventBusProvider", () => {
+  it("throws when useEventBusStatus is used outside EventBusProvider", async () => {
     function Probe(): JSX.Element | null {
       useEventBusStatus();
       return null;
     }
 
-    expect(() => render(<Probe />)).toThrow(
+    await expect(render(<Probe />)).rejects.toThrow(
       "EventBus hooks must be used inside EventBusProvider.",
     );
   });
