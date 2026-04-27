@@ -30,8 +30,6 @@
         "description",
         "channelPattern",
         "consumes",
-        "priority",
-        "parameters",
         "module",
         "export"
       ],
