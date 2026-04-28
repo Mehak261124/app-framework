@@ -70,23 +70,29 @@ Each parameter in the config produces one control:
 Each entry in the `parameters` prop describes one control:
 
 ```typescript
-export type ParameterType = "slider" | "number" | "select";
+export type ParameterType = "string" | "number";
+export type ParameterWidget = "slider" | "input" | "select";
 
 export interface ParameterConfig {
   /** Display label shown above the control. */
-  label: string;
+  title: string;
   /** Control type. */
   type: ParameterType;
   /** Default value applied on mount. */
   default: number | string;
   /** Minimum value — required for slider and number. */
-  min?: number;
+  minimum?: number;
   /** Maximum value — required for slider and number. */
-  max?: number;
+  maximum?: number;
   /** Step increment — optional for slider and number. */
-  step?: number;
+  multipleOf?: number;
   /** Options list — required for select. */
-  options?: string[];
+  enum?: string[];
+  /** Parameter widget options */
+  x-options?: {
+    /** Widget to use */
+    widget?: ParameterWidget;
+  }
 }
 ```
 
