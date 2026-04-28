@@ -24,8 +24,8 @@ function RegionItemRenderer({ item }: { item: RegionItem }): JSX.Element {
 
   // Sync factory — result is already a component
   if (typeof result === "function") {
-    const WidgetComponent = result;
-    return <WidgetComponent />;
+    const WidgetComponent = result as React.ComponentType<Record<string, unknown>>;
+    return <WidgetComponent {...item.props} />;
   }
 
   // Async factory — result is a Promise, use React.lazy + Suspense
@@ -43,10 +43,12 @@ function RegionItemRenderer({ item }: { item: RegionItem }): JSX.Element {
     componentCache.set(item.type, LazyComponent);
   }
 
-  const LazyWidget = componentCache.get(item.type)!;
+  const LazyWidget = componentCache.get(item.type)! as React.ComponentType<
+    Record<string, unknown>
+  >;
   return (
     <Suspense fallback={<div data-testid="widget-loading">Loading: {item.type}</div>}>
-      <LazyWidget />
+      <LazyWidget {...item.props} />
     </Suspense>
   );
 }
