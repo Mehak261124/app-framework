@@ -47,14 +47,13 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "npm"
 
       - name: Install dependencies
         # npm install is used instead of npm ci because the lock file is generated on
         # macOS (arm64) and CI runs on Linux (x64). npm ci fails due to a known npm bug
         # with optional dependencies (https://github.com/npm/cli/issues/4828) where
         # platform-specific binaries like @rollup/rollup-linux-x64-gnu are missing.
-        run: npm install
+        run: rm -f package-lock.json && npm install
 
       - name: Prettier check
         run: npm run format:check
@@ -87,7 +86,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "npm"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -104,8 +102,7 @@ jobs:
         # macOS (arm64) and CI runs on Linux (x64). npm ci fails due to a known npm bug
         # with optional dependencies (https://github.com/npm/cli/issues/4828) where
         # platform-specific binaries like @rollup/rollup-linux-x64-gnu are missing.
-        run: npm install
-
+        run: rm -f package-lock.json && npm install
 
       - name: Build Python package
         run: |
