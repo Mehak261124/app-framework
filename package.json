@@ -6,7 +6,8 @@
     "examples/frontend"
   ],
   "overrides": {
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "@rollup/rollup-linux-x64-gnu": "latest"
   },
   "scripts": {
     "dev": "npm run dev -w @app-framework/examples-frontend",
