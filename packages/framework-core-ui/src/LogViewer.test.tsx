@@ -1,12 +1,10 @@
-import React from "react";
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import React, { act } from "react";
+import { render } from "vitest-browser-react";
+import { describe, expect, it } from "vitest";
 
 import { EventBusProvider } from "./EventBusContext";
 import { LogViewerComponent } from "./LogViewer";
 import type { WebSocketLike } from "./client";
-
-// ─── FakeWebSocket ────────────────────────────────────────────────────────────
 
 class FakeWebSocket implements WebSocketLike {
   public static readonly OPEN = 1;
@@ -47,179 +45,133 @@ function sendLogEvent(
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getTextContent(renderer: ReactTestRenderer): string {
-  return renderer.toJSON() ? JSON.stringify(renderer.toJSON()) : "";
-}
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
 describe("LogViewerComponent", () => {
-  beforeEach(() => {
-    vi.stubGlobal("window", {
-      location: { protocol: "http:", host: "localhost:5173" },
-    });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('renders "No logs yet" when no events have arrived', () => {
+  it('renders "No logs yet" when no events have arrived', async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" />
-        </EventBusProvider>,
-      );
-    });
+    const screen = await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
     });
 
-    const text = getTextContent(renderer!);
-    expect(text).toContain("No logs yet");
+    await expect.element(screen.getByText("No logs yet")).toBeInTheDocument();
   });
 
-  it("displays log lines when channel emits events", () => {
+  it("displays log lines when channel emits events", async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" />
-        </EventBusProvider>,
-      );
-    });
+    const screen = await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       sendLogEvent(socket, "log/app", "hello world", "msg-1");
     });
 
-    const text = getTextContent(renderer!);
-    expect(text).toContain("hello world");
+    await expect.element(screen.getByText("hello world")).toBeInTheDocument();
   });
 
-  it("trims oldest lines when maxLines is exceeded", () => {
+  it("trims oldest lines when maxLines is exceeded", async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" maxLines={2} />
-        </EventBusProvider>,
-      );
-    });
+    const screen = await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" maxLines={2} />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       sendLogEvent(socket, "log/app", "line-one", "msg-1");
       sendLogEvent(socket, "log/app", "line-two", "msg-2");
       sendLogEvent(socket, "log/app", "line-three", "msg-3");
     });
 
-    const text = getTextContent(renderer!);
-    expect(text).not.toContain("line-one");
-    expect(text).toContain("line-two");
-    expect(text).toContain("line-three");
+    await expect.element(screen.getByText("line-two")).toBeInTheDocument();
+    await expect.element(screen.getByText("line-three")).toBeInTheDocument();
+    await expect.element(screen.getByText("line-one")).not.toBeInTheDocument();
   });
 
-  it("shows timestamps when showTimestamps is true", () => {
+  it("shows timestamps when showTimestamps is true", async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
-    // timestamp 0 → "1970-01-01T00:00:00.000Z"
     const knownTimestamp = 0;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" showTimestamps={true} />
-        </EventBusProvider>,
-      );
-    });
+    const screen = await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" showTimestamps={true} />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       sendLogEvent(socket, "log/app", "with-ts", "msg-1", knownTimestamp);
     });
 
-    const text = getTextContent(renderer!);
-    expect(text).toContain("1970-01-01T00:00:00.000Z");
+    await expect
+      .element(screen.getByText(/1970-01-01T00:00:00\.000Z/))
+      .toBeInTheDocument();
   });
 
-  it("hides timestamps when showTimestamps is false", () => {
+  it("hides timestamps when showTimestamps is false", async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
     const knownTimestamp = 0;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" showTimestamps={false} />
-        </EventBusProvider>,
-      );
-    });
+    const screen = await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" showTimestamps={false} />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       sendLogEvent(socket, "log/app", "no-ts", "msg-1", knownTimestamp);
     });
 
-    const text = getTextContent(renderer!);
-    expect(text).not.toContain("1970-01-01T00:00:00.000Z");
-    expect(text).toContain("no-ts");
+    await expect.element(screen.getByText("no-ts")).toBeInTheDocument();
+    await expect
+      .element(screen.getByText(/1970-01-01T00:00:00\.000Z/))
+      .not.toBeInTheDocument();
   });
 
-  it("uses pre-wrap style when wrapLines is true", () => {
+  it("uses pre-wrap style when wrapLines is true", async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" wrapLines={true} />
-        </EventBusProvider>,
-      );
-    });
+    await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" wrapLines={true} />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       sendLogEvent(socket, "log/app", "a long line that might wrap", "msg-1");
     });
 
-    const json = renderer!.toJSON();
-    const text = JSON.stringify(json);
-    expect(text).toContain("sct-LogViewer-line--wrap");
+    expect(document.querySelector(".sct-LogViewer-line--wrap")).not.toBeNull();
   });
 
-  it("uses pre (no-wrap) style when wrapLines is false", () => {
+  it("uses pre (no-wrap) style when wrapLines is false", async () => {
     const socket = new FakeWebSocket();
-    let renderer: ReactTestRenderer;
 
-    act(() => {
-      renderer = create(
-        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-          <LogViewerComponent channel="log/app" wrapLines={false} />
-        </EventBusProvider>,
-      );
-    });
+    await render(
+      <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+        <LogViewerComponent channel="log/app" wrapLines={false} />
+      </EventBusProvider>,
+    );
 
-    act(() => {
+    await act(async () => {
       socket.open();
       sendLogEvent(socket, "log/app", "a long line", "msg-1");
     });
 
-    const json = renderer!.toJSON();
-    const text = JSON.stringify(json);
-    // pre is the nowrap style
-    expect(text).not.toContain("sct-LogViewer-line--wrap");
+    expect(document.querySelector(".sct-LogViewer-line--wrap")).toBeNull();
   });
 });
