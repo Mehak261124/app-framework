@@ -1,6 +1,6 @@
-import React, { useEffect } from "react";
-import { act, create } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import React, { useEffect, act } from "react";
+import { render } from "vitest-browser-react";
+import { describe, expect, it } from "vitest";
 
 import { EventBusProvider } from "./EventBusContext";
 import { WidgetRegistryContext } from "./WidgetRegistryContext";
@@ -10,7 +10,7 @@ import { useWidgetRegistry } from "./useWidgetRegistry";
 import { useWidgets } from "./useWidgets";
 import { type WidgetDefinition, WidgetRegistry } from "./widgetRegistry";
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeWidget(name: string, channelPattern = "data/*"): WidgetDefinition {
   return {
@@ -144,13 +144,11 @@ describe("WidgetRegistry", () => {
     registry.register(logJson);
     registry.register(dataWidget);
 
-    // No mimeType: all channel-matching widgets
     const allLog = registry.resolveWidgets("log/app");
     expect(allLog.map((w) => w.name)).toContain("LogText");
     expect(allLog.map((w) => w.name)).toContain("LogJson");
     expect(allLog.map((w) => w.name)).not.toContain("Data");
 
-    // With mimeType: channel match first, then refine
     const refined = registry.resolveWidgets("log/app", "text/plain");
     expect(refined.map((w) => w.name)).toContain("LogText");
     expect(refined.map((w) => w.name)).not.toContain("LogJson");
@@ -165,27 +163,14 @@ describe("WidgetRegistry", () => {
       consumes: ["application/json"],
     };
     registry.register(logJson);
-
-    // mimeType is provided but no widget in channel set consumes it → must be []
-    const result = registry.resolveWidgets("log/app", "text/plain");
-    expect(result).toEqual([]);
+    expect(registry.resolveWidgets("log/app", "text/plain")).toEqual([]);
   });
 });
 
 // ─── React hook tests ─────────────────────────────────────────────────────────
 
 describe("widget hooks", () => {
-  beforeEach(() => {
-    vi.stubGlobal("window", {
-      location: { protocol: "http:", host: "localhost:5173" },
-    });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("useWidgetRegistry returns all registered widgets", () => {
+  it("useWidgetRegistry returns all registered widgets", async () => {
     const registry = new WidgetRegistry();
     registry.register(LOG_VIEWER);
     registry.register(STATUS_INDICATOR);
@@ -200,22 +185,20 @@ describe("widget hooks", () => {
       return null;
     }
 
-    act(() => {
-      create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-            <Probe />
-          </EventBusProvider>
-        </WidgetRegistryContext.Provider>,
-      );
-    });
+    await render(
+      <WidgetRegistryContext.Provider value={registry}>
+        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+          <Probe />
+        </EventBusProvider>
+      </WidgetRegistryContext.Provider>,
+    );
 
     const latest = seen.at(-1)!;
     expect(latest.map((w) => w.name)).toContain("LogViewer");
     expect(latest.map((w) => w.name)).toContain("StatusIndicator");
   });
 
-  it("useWidgets resolves widgets by channel", () => {
+  it("useWidgets resolves widgets by channel", async () => {
     const registry = new WidgetRegistry();
     registry.register(LOG_VIEWER);
     registry.register(STATUS_INDICATOR);
@@ -230,22 +213,20 @@ describe("widget hooks", () => {
       return null;
     }
 
-    act(() => {
-      create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-            <Probe />
-          </EventBusProvider>
-        </WidgetRegistryContext.Provider>,
-      );
-    });
+    await render(
+      <WidgetRegistryContext.Provider value={registry}>
+        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+          <Probe />
+        </EventBusProvider>
+      </WidgetRegistryContext.Provider>,
+    );
 
     const latest = seen.at(-1)!;
     expect(latest.map((w) => w.name)).toContain("LogViewer");
     expect(latest.map((w) => w.name)).not.toContain("StatusIndicator");
   });
 
-  it("useWidgets re-renders when a widget is registered after mount", () => {
+  it("useWidgets re-renders when a widget is registered after mount", async () => {
     const registry = new WidgetRegistry();
     const socket = new FakeWebSocket();
     const seen: WidgetDefinition[][] = [];
@@ -258,28 +239,24 @@ describe("widget hooks", () => {
       return null;
     }
 
-    act(() => {
-      create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-            <Probe />
-          </EventBusProvider>
-        </WidgetRegistryContext.Provider>,
-      );
-    });
+    await render(
+      <WidgetRegistryContext.Provider value={registry}>
+        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+          <Probe />
+        </EventBusProvider>
+      </WidgetRegistryContext.Provider>,
+    );
 
-    // Initially empty
     expect(seen.at(-1)).toEqual([]);
 
-    // Register a matching widget after mount
-    act(() => {
+    await act(async () => {
       registry.register(LOG_VIEWER);
     });
 
     expect(seen.at(-1)!.map((w) => w.name)).toContain("LogViewer");
   });
 
-  it("useWidgets refines by mimeType when provided", () => {
+  it("useWidgets refines by mimeType when provided", async () => {
     const registry = new WidgetRegistry();
     registry.register(LOG_VIEWER);
     registry.register(STATUS_INDICATOR);
@@ -294,15 +271,13 @@ describe("widget hooks", () => {
       return null;
     }
 
-    act(() => {
-      create(
-        <WidgetRegistryContext.Provider value={registry}>
-          <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-            <Probe />
-          </EventBusProvider>
-        </WidgetRegistryContext.Provider>,
-      );
-    });
+    await render(
+      <WidgetRegistryContext.Provider value={registry}>
+        <EventBusProvider path="/ws" webSocketFactory={() => socket}>
+          <Probe />
+        </EventBusProvider>
+      </WidgetRegistryContext.Provider>,
+    );
 
     const latest = seen.at(-1)!;
     expect(latest.map((w) => w.name)).toContain("LogViewer");

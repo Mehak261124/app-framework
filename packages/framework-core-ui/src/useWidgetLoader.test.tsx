@@ -1,6 +1,6 @@
-import React, { useEffect } from "react";
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import React, { act, useEffect } from "react";
+import { render } from "vitest-browser-react";
+import { describe, expect, it, vi } from "vitest";
 
 import { EventBusProvider } from "./EventBusContext";
 import { WidgetRegistryContext } from "./WidgetRegistryContext";
@@ -119,8 +119,8 @@ function makeTree(
     <WidgetRegistryContext.Provider value={registry}>
       <EventBusProvider path="/ws" webSocketFactory={() => socket}>
         <WidgetLoaderProvider>
-          {probes.map(({ url, onStatus }) => (
-            <Probe key={url} url={url} onStatus={onStatus} />
+          {probes.map(({ url, onStatus }, index) => (
+            <Probe key={`${url}-${index}`} url={url} onStatus={onStatus} />
           ))}
         </WidgetLoaderProvider>
       </EventBusProvider>
@@ -128,7 +128,6 @@ function makeTree(
   );
 }
 
-/** Convenience wrapper for single-manifest tests. */
 function makeSingleTree(
   registry: WidgetRegistry,
   url: string,
@@ -140,26 +139,12 @@ function makeSingleTree(
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("useWidgetLoader", () => {
-  beforeEach(() => {
-    vi.stubGlobal("window", {
-      location: { protocol: "http:", host: "localhost:5173" },
-    });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  // ─── Single manifest ───────────────────────────────────────────────────────
-
-  it('returns "loading" immediately after mount', () => {
+  it('returns "loading" immediately after mount', async () => {
     mockFetchManifest(EMPTY_MANIFEST);
     const registry = new WidgetRegistry();
     const statuses: Status[] = [];
 
-    act(() => {
-      create(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
-    });
+    await render(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
 
     expect(statuses[0]).toBe("loading");
   });
@@ -169,9 +154,7 @@ describe("useWidgetLoader", () => {
     const registry = new WidgetRegistry();
     const statuses: Status[] = [];
 
-    act(() => {
-      create(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
-    });
+    await render(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
 
     await act(async () => {
       await Promise.resolve();
@@ -185,9 +168,7 @@ describe("useWidgetLoader", () => {
     const registry = new WidgetRegistry();
     const statuses: Status[] = [];
 
-    act(() => {
-      create(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
-    });
+    await render(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
 
     await act(async () => {
       await Promise.resolve();
@@ -200,13 +181,10 @@ describe("useWidgetLoader", () => {
     mockFetchManifest(MANIFEST_WITH_WIDGET);
     const registry = new WidgetRegistry();
     const statuses: Status[] = [];
-    let renderer: ReactTestRenderer;
 
-    act(() => {
-      renderer = create(
-        makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)),
-      );
-    });
+    const { unmount } = await render(
+      makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)),
+    );
 
     await act(async () => {
       await Promise.resolve();
@@ -214,11 +192,8 @@ describe("useWidgetLoader", () => {
 
     expect(registry.get("TestWidget")).toBeDefined();
 
-    act(() => {
-      renderer!.unmount();
-    });
+    await unmount();
 
-    // unloadManifest should have removed the widget
     expect(registry.get("TestWidget")).toBeUndefined();
   });
 
@@ -227,9 +202,7 @@ describe("useWidgetLoader", () => {
     const registry = new WidgetRegistry();
     const statuses: Status[] = [];
 
-    act(() => {
-      create(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
-    });
+    await render(makeSingleTree(registry, MANIFEST_A_URL, (s) => statuses.push(s)));
 
     await act(async () => {
       await Promise.resolve();
@@ -238,8 +211,6 @@ describe("useWidgetLoader", () => {
     expect(statuses).toEqual(expect.arrayContaining(["loading", "ready"]));
     expect(statuses.indexOf("loading")).toBeLessThan(statuses.lastIndexOf("ready"));
   });
-
-  // ─── Multiple manifests ────────────────────────────────────────────────────
 
   it("two hooks sharing one WidgetLoaderProvider register widgets from both manifests", async () => {
     mockFetchByUrl({
@@ -250,14 +221,12 @@ describe("useWidgetLoader", () => {
     const statusA: Status[] = [];
     const statusB: Status[] = [];
 
-    act(() => {
-      create(
-        makeTree(registry, [
-          { url: MANIFEST_A_URL, onStatus: (s) => statusA.push(s) },
-          { url: MANIFEST_B_URL, onStatus: (s) => statusB.push(s) },
-        ]),
-      );
-    });
+    await render(
+      makeTree(registry, [
+        { url: MANIFEST_A_URL, onStatus: (s) => statusA.push(s) },
+        { url: MANIFEST_B_URL, onStatus: (s) => statusB.push(s) },
+      ]),
+    );
 
     await act(async () => {
       await Promise.resolve();
@@ -277,8 +246,6 @@ describe("useWidgetLoader", () => {
     const registry = new WidgetRegistry();
     const statusA: Status[] = [];
     const statusB: Status[] = [];
-
-    // Render both probes inside the same WidgetLoaderProvider
     const socket = new FakeWebSocket();
 
     let setShowA!: (v: boolean) => void;
@@ -300,9 +267,7 @@ describe("useWidgetLoader", () => {
       );
     }
 
-    act(() => {
-      create(<Shell />);
-    });
+    await render(<Shell />);
 
     await act(async () => {
       await Promise.resolve();
@@ -311,7 +276,6 @@ describe("useWidgetLoader", () => {
     expect(registry.get("TestWidget")).toBeDefined();
     expect(registry.get("ChartWidget")).toBeDefined();
 
-    // Unmount only the Manifest A probe
     act(() => {
       setShowA(false);
     });
@@ -326,14 +290,12 @@ describe("useWidgetLoader", () => {
     const statusA: Status[] = [];
     const statusB: Status[] = [];
 
-    act(() => {
-      create(
-        makeTree(registry, [
-          { url: MANIFEST_A_URL, onStatus: (s) => statusA.push(s) },
-          { url: MANIFEST_A_URL, onStatus: (s) => statusB.push(s) },
-        ]),
-      );
-    });
+    await render(
+      makeTree(registry, [
+        { url: MANIFEST_A_URL, onStatus: (s) => statusA.push(s) },
+        { url: MANIFEST_A_URL, onStatus: (s) => statusB.push(s) },
+      ]),
+    );
 
     await act(async () => {
       await Promise.resolve();
