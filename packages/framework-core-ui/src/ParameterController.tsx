@@ -55,7 +55,6 @@ function resolveWidget(config: ParameterConfig): ParameterWidget {
   const explicit = config["x-options"]?.widget;
   if (explicit) return explicit;
   if (config.enum) return "select";
-  if (config.type === "number") return "slider";
   return "input";
 }
 
@@ -83,24 +82,23 @@ export function ParameterControllerComponent({
     parameters && Object.keys(parameters).length > 0 ? initialValues(parameters) : {},
   );
 
-  // Track whether this is the first render to avoid publishing on mount
-  const isMounted = useRef(false);
+  /**
+   * Tracks whether the user has interacted with any control.
+   * Reset to false whenever the parameters config changes so that
+   * resetting defaults on a config change does not trigger a publish.
+   */
+  const hasInteracted = useRef(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset values when parameters config changes
+  // Reset values and interaction flag when parameters config changes
   useEffect(() => {
+    hasInteracted.current = false;
     if (parameters && Object.keys(parameters).length > 0) {
       setValues(initialValues(parameters));
     } else {
       setValues({});
     }
-    isMounted.current = false;
   }, [parameters]);
-
-  // Mark as mounted after first render
-  useEffect(() => {
-    isMounted.current = true;
-  }, []);
 
   const publishValues = useCallback(
     (nextValues: Record<string, number | string>) => {
@@ -111,10 +109,9 @@ export function ParameterControllerComponent({
 
   const handleChange = useCallback(
     (key: string, value: number | string, debounce = false) => {
+      hasInteracted.current = true;
       const nextValues = { ...values, [key]: value };
       setValues(nextValues);
-
-      if (!isMounted.current) return;
 
       if (debounce) {
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -143,11 +140,7 @@ export function ParameterControllerComponent({
         const value = values[key] ?? config.default;
 
         return (
-          <div
-            key={key}
-            className={`${PREFIX}-row`}
-            data-testid={`parameter-row-${key}`}
-          >
+          <div key={key} className={`${PREFIX}-row`}>
             <Label.Root className={`${PREFIX}-label`} htmlFor={`param-${key}`}>
               {config.title}
             </Label.Root>
@@ -214,7 +207,6 @@ export function ParameterControllerComponent({
                             key={option}
                             value={option}
                             className={`${PREFIX}-select-item`}
-                            data-testid={`select-option-${option}`}
                           >
                             <Select.ItemText>{option}</Select.ItemText>
                           </Select.Item>

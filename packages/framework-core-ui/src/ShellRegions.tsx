@@ -12,7 +12,7 @@ import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
 const componentCache = new Map<string, React.ComponentType>();
 
 /** Renders a single RegionItem — resolves type from registry, falls back to placeholders. */
-function RegionItemRenderer({ item }: { item: RegionItem }): JSX.Element {
+function RegionItemRenderer({ item }: { item: RegionItem }): React.ReactElement {
   const registry = useWidgetRegistryInstance();
   const definition = registry.get(item.type);
 
@@ -56,7 +56,7 @@ function RegionItemRenderer({ item }: { item: RegionItem }): JSX.Element {
 // ─── SortedItems ──────────────────────────────────────────────────────────────
 
 /** Renders region items sorted by ascending `order`, then registration order. */
-function SortedItems({ items }: { items: RegionItem[] }): JSX.Element | null {
+function SortedItems({ items }: { items: RegionItem[] }): React.ReactElement | null {
   if (items.length === 0) return null;
   return (
     <>
@@ -105,7 +105,7 @@ export function ShellHeader({
   region,
   setRegion: _setRegion,
   className,
-}: ShellHeaderProps): JSX.Element {
+}: ShellHeaderProps): React.ReactElement {
   return (
     <header
       className={mergeClassNames("sct-ShellHeader", className)}
@@ -146,7 +146,7 @@ export function ShellSidebar({
   region,
   setRegion,
   className,
-}: ShellSidebarProps): JSX.Element {
+}: ShellSidebarProps): React.ReactElement {
   return (
     <aside
       className={mergeClassNames("sct-ShellSidebar", className)}
@@ -190,7 +190,7 @@ export function ShellMain({
   region,
   setRegion: _setRegion,
   className,
-}: ShellMainProps): JSX.Element {
+}: ShellMainProps): React.ReactElement {
   return (
     <main
       className={mergeClassNames("sct-ShellMain", className)}
@@ -230,7 +230,7 @@ export function ShellBottom({
   region,
   setRegion,
   className,
-}: ShellBottomProps): JSX.Element {
+}: ShellBottomProps): React.ReactElement {
   return (
     <div
       className={mergeClassNames("sct-ShellBottom", className)}
@@ -271,7 +271,7 @@ export function ShellStatusBar({
   region,
   setRegion: _setRegion,
   className,
-}: ShellStatusBarProps): JSX.Element {
+}: ShellStatusBarProps): React.ReactElement {
   return (
     <footer
       className={mergeClassNames("sct-ShellStatusBar", className)}

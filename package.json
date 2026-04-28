@@ -5,10 +5,6 @@
     "packages/framework-core-ui",
     "examples/frontend"
   ],
-  "overrides": {
-    "react-dom": "^18",
-    "@rollup/rollup-linux-x64-gnu": "latest"
-  },
   "scripts": {
     "dev": "npm run dev -w @app-framework/examples-frontend",
     "build": "npm run build --workspaces --if-present",
@@ -27,6 +23,7 @@
     "prettier": "^3",
     "typescript": "^5",
     "typescript-eslint": "^8.58.1",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "vitest-browser-react": "^2.2.0"
   }
 }

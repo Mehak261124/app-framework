@@ -260,4 +260,50 @@ describe("RegionItemRenderer (via ShellMain)", () => {
 
     expect(document.querySelector('[data-testid="widget-load-error"]')).not.toBeNull();
   });
+  it("passes item.props to the rendered widget component", async () => {
+    const registry = new WidgetRegistry();
+    const receivedProps: Record<string, unknown>[] = [];
+
+    const propsWidget: WidgetDefinition = {
+      name: "PropsWidget",
+      description: "Records received props",
+      channelPattern: "data/*",
+      consumes: ["text/plain"],
+      priority: 10,
+      parameters: {},
+      factory: () => (props: Record<string, unknown>) => {
+        receivedProps.push(props);
+        return React.createElement(
+          "span",
+          { "data-testid": "props-widget" },
+          String(props["label"] ?? ""),
+        );
+      },
+    };
+    registry.register(propsWidget);
+
+    const layout: ShellLayout = {
+      regions: {
+        ...createDefaultShellLayout().regions,
+        main: {
+          visible: true,
+          items: [
+            {
+              id: "pw1",
+              type: "PropsWidget",
+              props: { label: "hello", value: 42 },
+              order: 0,
+            },
+          ],
+        },
+      },
+    };
+
+    await renderWithShell(registry, layout);
+
+    const el = document.querySelector('[data-testid="props-widget"]');
+    expect(el).not.toBeNull();
+    expect(el!.textContent).toBe("hello");
+    expect(receivedProps[0]).toMatchObject({ label: "hello", value: 42 });
+  });
 });

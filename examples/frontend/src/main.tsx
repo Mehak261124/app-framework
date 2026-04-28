@@ -45,7 +45,6 @@ const initialLayout: ShellLayout = {
                 maximum: 10000,
                 multipleOf: 1,
                 default: 1000,
-                "x-options": { widget: "input" },
               },
               solver: {
                 title: "Solver",
