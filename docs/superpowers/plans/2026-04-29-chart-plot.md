@@ -72,11 +72,11 @@ backend producer    → data/sine      → Chart widget
 
 v1 ships one chart type: **line chart** (time-series).
 
-| Use case              | X axis        | Y axis        | Example channel  |
-| --------------------- | ------------- | ------------- | ---------------- |
-| Time-series streaming | Elapsed time  | Scalar float  | `data/sine`      |
-| Convergence curve     | Iteration     | Residual norm | `data/residual`  |
-| Any scalar stream     | Elapsed time  | Scalar float  | `data/*`         |
+| Use case              | X axis       | Y axis        | Example channel |
+| --------------------- | ------------ | ------------- | --------------- |
+| Time-series streaming | Elapsed time | Scalar float  | `data/sine`     |
+| Convergence curve     | Iteration    | Residual norm | `data/residual` |
+| Any scalar stream     | Elapsed time | Scalar float  | `data/*`        |
 
 The X axis is always elapsed time in seconds since the first received point. This avoids requiring the backend to include a timestamp in every event.
 
@@ -178,6 +178,7 @@ On mount the component initialises an empty `DataPoint[]` buffer and subscribes 
 ### 5.2 Incoming event
 
 On each event:
+
 1. Extract the numeric value at `field` path from the payload.
 2. If the value is not a finite number, drop silently.
 3. If `startTime` is null, set `startTime = Date.now()`.
@@ -219,7 +220,7 @@ import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts"
       />
     ))}
   </LineChart>
-</ChartContainer>
+</ChartContainer>;
 ```
 
 `isAnimationActive={false}` is required for live streaming — Recharts animation conflicts with rapid updates.
@@ -242,7 +243,7 @@ const chartConfig = Object.fromEntries(
       label: s.label ?? s.channel,
       color: s.color ?? `var(--chart-${i + 1})`,
     },
-  ])
+  ]),
 );
 ```
 
