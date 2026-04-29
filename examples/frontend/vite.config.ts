@@ -23,6 +23,12 @@ export default defineConfig({
       },
     },
   ],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "../../packages/framework-core-ui/src"),
+    },
+    dedupe: ["react", "react-dom"],
+  },
   server: {
     proxy: {
       "/ws": {
