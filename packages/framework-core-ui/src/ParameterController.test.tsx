@@ -1,6 +1,7 @@
-import React, { act } from "react";
+import { act } from "react";
 import { render } from "vitest-browser-react";
-import { describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
+import { describe, expect, it } from "vitest";
 
 import { EventBusProvider } from "./EventBusContext";
 import { ParameterControllerComponent } from "./ParameterController";
@@ -67,7 +68,7 @@ async function renderController(
   debounceMs = 0,
 ) {
   const socket = new FakeWebSocket();
-  const view = await render(
+  await render(
     <EventBusProvider path="/ws" webSocketFactory={() => socket}>
       <ParameterControllerComponent
         channel={channel}
@@ -77,7 +78,7 @@ async function renderController(
     </EventBusProvider>,
   );
   act(() => socket.open());
-  return { view, socket };
+  return { socket };
 }
 
 function getPublishedPayloads(socket: FakeWebSocket): Record<string, unknown>[] {
@@ -93,104 +94,72 @@ describe("ParameterControllerComponent", () => {
   // ── Empty state ─────────────────────────────────────────────────────────────
 
   it("renders empty placeholder when parameters is undefined", async () => {
-    const { view } = await renderController(undefined);
-    expect(
-      view.baseElement.querySelector('[data-testid="parameter-controller-empty"]'),
-    ).not.toBeNull();
+    await renderController(undefined);
+    await expect.element(page.getByText("No parameters configured")).toBeVisible();
   });
 
   it("renders empty placeholder when parameters is {}", async () => {
-    const { view } = await renderController({});
-    expect(
-      view.baseElement.querySelector('[data-testid="parameter-controller-empty"]'),
-    ).not.toBeNull();
+    await renderController({});
+    await expect.element(page.getByText("No parameters configured")).toBeVisible();
   });
 
   // ── Rendering ───────────────────────────────────────────────────────────────
 
   it("renders slider for x-options widget: slider", async () => {
-    const { view } = await renderController({ timestep: SLIDER_PARAM });
-    expect(
-      view.baseElement.querySelector('[data-testid="slider-timestep"]'),
-    ).not.toBeNull();
+    await renderController({ timestep: SLIDER_PARAM });
+    expect(page.getByRole("group", { name: "Time Step" }).query()).not.toBeNull();
   });
 
   it("renders number input for x-options widget: input", async () => {
-    const { view } = await renderController({ max_iterations: INPUT_PARAM });
-    expect(
-      view.baseElement.querySelector('[data-testid="input-max_iterations"]'),
-    ).not.toBeNull();
+    await renderController({ max_iterations: INPUT_PARAM });
+    await expect.element(page.getByLabelText("Max Iterations")).toBeVisible();
   });
 
   it("renders select for x-options widget: select", async () => {
-    const { view } = await renderController({ solver: SELECT_PARAM });
-    expect(
-      view.baseElement.querySelector('[data-testid="select-solver"]'),
-    ).not.toBeNull();
+    await renderController({ solver: SELECT_PARAM });
+    await expect.element(page.getByLabelText("Solver")).toBeVisible();
   });
 
   it("renders label for each parameter", async () => {
-    const { view } = await renderController({ timestep: SLIDER_PARAM });
-    expect(view.baseElement.textContent).toContain("Time Step");
+    await renderController({ timestep: SLIDER_PARAM });
+    await expect.element(page.getByText("Time Step")).toBeVisible();
   });
 
   // ── Default values ──────────────────────────────────────────────────────────
 
   it("initialises number input with default value", async () => {
-    const { view } = await renderController({ max_iterations: INPUT_PARAM });
-    const input = view.baseElement.querySelector<HTMLInputElement>(
-      '[data-testid="input-max_iterations"]',
-    );
-    expect(input).not.toBeNull();
-    expect(input!.value).toBe("500");
+    await renderController({ max_iterations: INPUT_PARAM });
+    await expect.element(page.getByLabelText("Max Iterations")).toHaveValue(500);
   });
 
   it("initialises select with default value", async () => {
-    const { view } = await renderController({ solver: SELECT_PARAM });
-    const trigger = view.baseElement.querySelector('[data-testid="select-solver"]');
-    expect(trigger).not.toBeNull();
-    expect(trigger!.textContent).toContain("rk4");
+    await renderController({ solver: SELECT_PARAM });
+    await expect
+      .element(page.getByRole("combobox", { name: "Solver" }))
+      .toHaveTextContent("rk4");
   });
 
   it("displays default value for slider", async () => {
-    const { view } = await renderController({ timestep: SLIDER_PARAM });
-    const valueDisplay = view.baseElement.querySelector(
-      '[data-testid="slider-value-timestep"]',
-    );
-    expect(valueDisplay).not.toBeNull();
-    expect(valueDisplay!.textContent).toContain("0.1");
+    await renderController({ timestep: SLIDER_PARAM });
+    await expect.element(page.getByText("0.1")).toBeVisible();
   });
 
   // ── No publish on mount ──────────────────────────────────────────────────────
 
   it("does NOT publish on mount", async () => {
     const { socket } = await renderController({ timestep: SLIDER_PARAM });
-    const payloads = getPublishedPayloads(socket);
-    expect(payloads).toHaveLength(0);
+    expect(getPublishedPayloads(socket)).toHaveLength(0);
   });
 
   // ── Publishing ──────────────────────────────────────────────────────────────
 
   it("publishes full state immediately on number input change", async () => {
-    const { view, socket } = await renderController({
+    const { socket } = await renderController({
       max_iterations: INPUT_PARAM,
       solver: SELECT_PARAM,
     });
 
-    const input = view.baseElement.querySelector<HTMLInputElement>(
-      '[data-testid="input-max_iterations"]',
-    )!;
-    expect(input).not.toBeNull();
-
-    await act(async () => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      )!.set!;
-      nativeInputValueSetter.call(input, "200");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await page.getByRole("spinbutton", { name: "Max Iterations" }).fill("200");
 
     const payloads = getPublishedPayloads(socket);
     expect(payloads.length).toBeGreaterThan(0);
@@ -198,25 +167,12 @@ describe("ParameterControllerComponent", () => {
   });
 
   it("published payload contains all current parameter values", async () => {
-    const { view, socket } = await renderController({
+    const { socket } = await renderController({
       max_iterations: INPUT_PARAM,
       solver: SELECT_PARAM,
     });
 
-    const input = view.baseElement.querySelector<HTMLInputElement>(
-      '[data-testid="input-max_iterations"]',
-    )!;
-    expect(input).not.toBeNull();
-
-    await act(async () => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      )!.set!;
-      nativeInputValueSetter.call(input, "300");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await page.getByRole("spinbutton", { name: "Max Iterations" }).fill("300");
 
     const payloads = getPublishedPayloads(socket);
     const last = payloads[payloads.length - 1];
@@ -227,40 +183,40 @@ describe("ParameterControllerComponent", () => {
   // ── Debounce ────────────────────────────────────────────────────────────────
 
   it("debounces publish on slider change", async () => {
-    vi.useFakeTimers();
-    const { view, socket } = await renderController(
+    const { socket } = await renderController(
       { timestep: SLIDER_PARAM },
       "params/control",
       300,
     );
 
-    const thumb = view.baseElement.querySelector<HTMLElement>(
-      '[data-testid="slider-timestep"] [role="slider"]',
+    // Base UI's SliderPrimitive.Thumb renders a visually-hidden <input type="range">
+    // inside a <span role="slider">. The span has no CSS dimensions in headless tests
+    // so Playwright's visibility check times out on both the group and the span.
+    // The actual interactive element is the hidden <input type="range"> — we reach
+    // it via querySelector on the group container and drive it with native DOM APIs
+    // which bypass Playwright's visibility requirement entirely.
+    const sliderGroup = page.getByRole("group", { name: "Time Step" });
+    const rangeInput = sliderGroup
+      .element()
+      .querySelector('input[type="range"]') as HTMLInputElement | null;
+
+    if (!rangeInput) throw new Error('Slider <input type="range"> not found in DOM');
+
+    rangeInput.focus();
+    rangeInput.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        bubbles: true,
+        cancelable: true,
+      }),
     );
-    expect(thumb).not.toBeNull();
 
-    await act(async () => {
-      thumb!.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-      );
-      thumb!.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-      );
-      thumb!.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-      );
-    });
+    // Debounce timer started — no publish yet
+    expect(getPublishedPayloads(socket)).toHaveLength(0);
 
-    const beforeFlush = getPublishedPayloads(socket);
-    expect(beforeFlush).toHaveLength(0);
+    // Wait for debounce (300ms) + buffer
+    await new Promise<void>((resolve) => setTimeout(resolve, 350));
 
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-    });
-
-    const afterFlush = getPublishedPayloads(socket);
-    expect(afterFlush).toHaveLength(1);
-
-    vi.useRealTimers();
+    expect(getPublishedPayloads(socket)).toHaveLength(1);
   });
 });

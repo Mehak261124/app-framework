@@ -17,7 +17,7 @@ function RegionItemRenderer({ item }: { item: RegionItem }): React.ReactElement 
   const definition = registry.get(item.type);
 
   if (!definition) {
-    return <div data-testid="widget-not-found">Widget not found: {item.type}</div>;
+    return <div>Widget not found: {item.type}</div>;
   }
 
   const result = definition.factory({ parameters: item.props });
@@ -35,9 +35,7 @@ function RegionItemRenderer({ item }: { item: RegionItem }): React.ReactElement 
       (result as Promise<React.ComponentType>)
         .then((Component) => ({ default: Component }))
         .catch(() => ({
-          default: () => (
-            <div data-testid="widget-load-error">Failed to load: {widgetType}</div>
-          ),
+          default: () => <div>Failed to load: {widgetType}</div>,
         })),
     );
     componentCache.set(item.type, LazyComponent);
@@ -47,7 +45,7 @@ function RegionItemRenderer({ item }: { item: RegionItem }): React.ReactElement 
     Record<string, unknown>
   >;
   return (
-    <Suspense fallback={<div data-testid="widget-loading">Loading: {item.type}</div>}>
+    <Suspense fallback={<div>Loading: {item.type}</div>}>
       <LazyWidget {...item.props} />
     </Suspense>
   );
@@ -149,6 +147,7 @@ export function ShellSidebar({
 }: ShellSidebarProps): React.ReactElement {
   return (
     <aside
+      aria-label={`${side} sidebar`}
       className={mergeClassNames("sct-ShellSidebar", className)}
       data-testid={`shell-sidebar-${side}`}
       style={{ width: region.visible ? "220px" : "32px", overflow: "hidden" }}
@@ -233,6 +232,8 @@ export function ShellBottom({
 }: ShellBottomProps): React.ReactElement {
   return (
     <div
+      role="region"
+      aria-label="bottom panel"
       className={mergeClassNames("sct-ShellBottom", className)}
       data-testid="shell-bottom"
       style={{ display: region.visible ? undefined : "none" }}

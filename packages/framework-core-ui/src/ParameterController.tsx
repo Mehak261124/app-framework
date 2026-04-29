@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as Slider from "@radix-ui/react-slider";
-import * as Select from "@radix-ui/react-select";
-import * as Label from "@radix-ui/react-label";
+import { Field } from "@base-ui/react/field";
+import { Label } from "./components/ui/label";
+import { Slider } from "./components/ui/slider";
+import { Input } from "./components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 import { usePublish } from "./usePublish";
 import "./ParameterController.css";
 
@@ -82,11 +90,6 @@ export function ParameterControllerComponent({
     parameters && Object.keys(parameters).length > 0 ? initialValues(parameters) : {},
   );
 
-  /**
-   * Tracks whether the user has interacted with any control.
-   * Reset to false whenever the parameters config changes so that
-   * resetting defaults on a config change does not trigger a publish.
-   */
   const hasInteracted = useRef(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -99,6 +102,13 @@ export function ParameterControllerComponent({
       setValues({});
     }
   }, [parameters]);
+
+  // Clean up any pending debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, []);
 
   const publishValues = useCallback(
     (nextValues: Record<string, number | string>) => {
@@ -126,95 +136,82 @@ export function ParameterControllerComponent({
   );
 
   if (!parameters || Object.keys(parameters).length === 0) {
-    return (
-      <div className={`${PREFIX}-empty`} data-testid="parameter-controller-empty">
-        No parameters configured
-      </div>
-    );
+    return <div className={`${PREFIX}-empty`}>No parameters configured</div>;
   }
 
   return (
-    <div className={`${PREFIX}-container`} data-testid="parameter-controller">
+    <div className={`${PREFIX}-container`}>
       {Object.entries(parameters).map(([key, config]) => {
         const widget = resolveWidget(config);
         const value = values[key] ?? config.default;
 
         return (
           <div key={key} className={`${PREFIX}-row`}>
-            <Label.Root className={`${PREFIX}-label`} htmlFor={`param-${key}`}>
+            <Label htmlFor={`param-${key}`} className={`${PREFIX}-label`}>
               {config.title}
-            </Label.Root>
+            </Label>
 
             <div className={`${PREFIX}-control`}>
               {widget === "slider" && (
                 <div className={`${PREFIX}-slider-wrapper`}>
-                  <Slider.Root
+                  <Slider
                     id={`param-${key}`}
-                    className={`${PREFIX}-slider-root`}
+                    aria-label={config.title}
                     min={config.minimum ?? 0}
                     max={config.maximum ?? 100}
                     step={config.multipleOf ?? 1}
                     value={[value as number]}
-                    onValueChange={([v]) => handleChange(key, v, true)}
-                    data-testid={`slider-${key}`}
-                  >
-                    <Slider.Track className={`${PREFIX}-slider-track`}>
-                      <Slider.Range className={`${PREFIX}-slider-range`} />
-                    </Slider.Track>
-                    <Slider.Thumb className={`${PREFIX}-slider-thumb`} />
-                  </Slider.Root>
-                  <span
-                    className={`${PREFIX}-value`}
-                    data-testid={`slider-value-${key}`}
-                  >
+                    onValueChange={(newValue) => {
+                      const v = Array.isArray(newValue) ? newValue[0] : newValue;
+                      handleChange(key, v, true);
+                    }}
+                  />
+                  <span className={`${PREFIX}-value`}>
                     {(value as number).toLocaleString()}
                   </span>
                 </div>
               )}
 
               {widget === "input" && (
-                <input
-                  id={`param-${key}`}
-                  className={`${PREFIX}-input`}
-                  type="number"
-                  min={config.minimum}
-                  max={config.maximum}
-                  step={config.multipleOf}
-                  value={value as number}
-                  onChange={(e) => handleChange(key, e.target.valueAsNumber)}
-                  data-testid={`input-${key}`}
-                />
+                // @base-ui/react/input requires a Field ancestor for its
+                // internal useFieldRootContext hook.
+                <Field.Root>
+                  <Input
+                    id={`param-${key}`}
+                    aria-label={config.title}
+                    className={`${PREFIX}-input`}
+                    type="number"
+                    min={config.minimum}
+                    max={config.maximum}
+                    step={config.multipleOf}
+                    value={value as number}
+                    onChange={(e) => handleChange(key, e.target.valueAsNumber)}
+                  />
+                </Field.Root>
               )}
 
               {widget === "select" && (
-                <Select.Root
+                <Select
                   value={value as string}
-                  onValueChange={(v) => handleChange(key, v)}
+                  onValueChange={(v: string | null) =>
+                    v !== null && handleChange(key, v)
+                  }
                 >
-                  <Select.Trigger
+                  <SelectTrigger
                     id={`param-${key}`}
+                    aria-label={config.title}
                     className={`${PREFIX}-select-trigger`}
-                    data-testid={`select-${key}`}
                   >
-                    <Select.Value />
-                    <Select.Icon className={`${PREFIX}-select-icon`}>▾</Select.Icon>
-                  </Select.Trigger>
-                  <Select.Portal>
-                    <Select.Content className={`${PREFIX}-select-content`}>
-                      <Select.Viewport>
-                        {config.enum?.map((option) => (
-                          <Select.Item
-                            key={option}
-                            value={option}
-                            className={`${PREFIX}-select-item`}
-                          >
-                            <Select.ItemText>{option}</Select.ItemText>
-                          </Select.Item>
-                        ))}
-                      </Select.Viewport>
-                    </Select.Content>
-                  </Select.Portal>
-                </Select.Root>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {config.enum?.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>
