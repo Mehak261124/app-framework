@@ -216,7 +216,9 @@ import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts"
     <XAxis
       dataKey="t"
       tickFormatter={(v) => `${v.toFixed(1)}s`}
-      label={xLabel ? { value: xLabel, position: "insideBottom", offset: -4 } : undefined}
+      label={
+        xLabel ? { value: xLabel, position: "insideBottom", offset: -4 } : undefined
+      }
     />
     <YAxis
       domain={yDomain === "auto" ? ["auto", "auto"] : yDomain}
