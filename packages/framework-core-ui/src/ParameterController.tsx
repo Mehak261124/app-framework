@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Field } from "@base-ui/react/field";
-import { Label } from "./components/ui/label";
+import { Form } from "@base-ui/react/form";
 import { Slider } from "./components/ui/slider";
-import { Input } from "./components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,41 +18,21 @@ export type ParameterType = "string" | "number";
 export type ParameterWidget = "slider" | "input" | "select";
 
 export interface ParameterConfig {
-  /** Display label shown above the control. */
   title: string;
-  /** JSON schema type. */
   type: ParameterType;
-  /** Default value applied on mount. */
   default: number | string;
-  /** Minimum value — for slider and number input. */
   minimum?: number;
-  /** Maximum value — for slider and number input. */
   maximum?: number;
-  /** Step increment — for slider and number input. */
   multipleOf?: number;
-  /** Options list — for select. */
   enum?: string[];
-  /** Widget rendering options. */
   "x-options"?: {
     widget?: ParameterWidget;
   };
 }
 
 export interface ParameterControllerProps {
-  /**
-   * EventBus channel to publish parameter updates to.
-   * Default: "params/control"
-   */
   channel?: string;
-  /**
-   * Parameter definitions keyed by parameter name.
-   * The key is used as the field name in the published payload.
-   */
   parameters?: Record<string, ParameterConfig>;
-  /**
-   * Debounce delay in milliseconds for slider controls.
-   * Default: 300
-   */
   debounceMs?: number;
 }
 
@@ -69,11 +48,9 @@ function resolveWidget(config: ParameterConfig): ParameterWidget {
 function initialValues(
   parameters: Record<string, ParameterConfig>,
 ): Record<string, number | string> {
-  const result: Record<string, number | string> = {};
-  for (const [key, config] of Object.entries(parameters)) {
-    result[key] = config.default;
-  }
-  return result;
+  return Object.fromEntries(
+    Object.entries(parameters).map(([key, config]) => [key, config.default]),
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -90,12 +67,9 @@ export function ParameterControllerComponent({
     parameters && Object.keys(parameters).length > 0 ? initialValues(parameters) : {},
   );
 
-  const hasInteracted = useRef(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset values and interaction flag when parameters config changes
   useEffect(() => {
-    hasInteracted.current = false;
     if (parameters && Object.keys(parameters).length > 0) {
       setValues(initialValues(parameters));
     } else {
@@ -103,7 +77,6 @@ export function ParameterControllerComponent({
     }
   }, [parameters]);
 
-  // Clean up any pending debounce timer on unmount
   useEffect(() => {
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -119,7 +92,6 @@ export function ParameterControllerComponent({
 
   const handleChange = useCallback(
     (key: string, value: number | string, debounce = false) => {
-      hasInteracted.current = true;
       const nextValues = { ...values, [key]: value };
       setValues(nextValues);
 
@@ -140,16 +112,25 @@ export function ParameterControllerComponent({
   }
 
   return (
-    <div className={`${PREFIX}-container`}>
+    // Form with no submit button — publishes on each field change.
+    // validationMode="onChange" ensures Field errors update live.
+    <Form
+      className={`${PREFIX}-container`}
+      validationMode="onChange"
+      onFormSubmit={() => {
+        // No-op: submission is driven by individual field onChange handlers.
+        // The Form wrapper is here for semantic correctness and Field context.
+      }}
+    >
       {Object.entries(parameters).map(([key, config]) => {
         const widget = resolveWidget(config);
         const value = values[key] ?? config.default;
 
         return (
-          <div key={key} className={`${PREFIX}-row`}>
-            <Label htmlFor={`param-${key}`} className={`${PREFIX}-label`}>
+          <Field.Root key={key} name={key} className={`${PREFIX}-row`}>
+            <Field.Label className={`${PREFIX}-label`} htmlFor={`param-${key}`}>
               {config.title}
-            </Label>
+            </Field.Label>
 
             <div className={`${PREFIX}-control`}>
               {widget === "slider" && (
@@ -173,21 +154,21 @@ export function ParameterControllerComponent({
               )}
 
               {widget === "input" && (
-                // @base-ui/react/input requires a Field ancestor for its
-                // internal useFieldRootContext hook.
-                <Field.Root>
-                  <Input
-                    id={`param-${key}`}
-                    aria-label={config.title}
-                    className={`${PREFIX}-input`}
-                    type="number"
-                    min={config.minimum}
-                    max={config.maximum}
-                    step={config.multipleOf}
-                    value={value as number}
-                    onChange={(e) => handleChange(key, e.target.valueAsNumber)}
-                  />
-                </Field.Root>
+                // Field.Root ancestor satisfies useFieldRootContext
+                // used internally by base-ui Input.
+                <Field.Control
+                  id={`param-${key}`}
+                  aria-label={config.title}
+                  className={`${PREFIX}-input`}
+                  type="number"
+                  min={config.minimum}
+                  max={config.maximum}
+                  step={config.multipleOf}
+                  value={String(value)}
+                  onChange={(e) =>
+                    handleChange(key, (e.target as HTMLInputElement).valueAsNumber)
+                  }
+                />
               )}
 
               {widget === "select" && (
@@ -214,9 +195,9 @@ export function ParameterControllerComponent({
                 </Select>
               )}
             </div>
-          </div>
+          </Field.Root>
         );
       })}
-    </div>
+    </Form>
   );
 }
