@@ -41,6 +41,32 @@ vi.mock("./useChannel", () => ({
 beforeEach(() => {
   payloads = new Map();
   listeners.clear();
+
+  // Force ResponsiveContainer to see a real size in tests.
+  // Recharts uses ResizeObserver internally; if the observed entry
+  // has zero dimensions it skips rendering children entirely.
+  global.ResizeObserver = class ResizeObserver {
+    private cb: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) {
+      this.cb = cb;
+    }
+    observe(target: Element) {
+      this.cb(
+        [
+          {
+            target,
+            contentRect: { width: 800, height: 400 } as DOMRectReadOnly,
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          },
+        ],
+        this,
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+  };
 });
 
 // ---------------------------------------------------------------------------
