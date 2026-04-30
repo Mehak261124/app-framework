@@ -13,6 +13,7 @@ import {
 import type { ShellLayout } from "@app-framework/core-ui";
 import { useSimulation } from "./useSimulation";
 import "./shell.css";
+import "@/globals.css";
 
 const registry = new WidgetRegistry();
 registry.register(PARAMETER_CONTROLLER);
@@ -28,30 +29,34 @@ const initialLayout: ShellLayout = {
           type: "ParameterController",
           props: {
             channel: "params/control",
+            debounceMs: 300,
             parameters: {
-              timestep: {
-                title: "Time Step",
+              frequency: {
+                title: "Frequency (Hz)",
                 type: "number",
-                minimum: 0.001,
-                maximum: 1.0,
-                multipleOf: 0.001,
-                default: 0.01,
+                minimum: 0.1,
+                maximum: 10.0,
+                multipleOf: 0.1,
+                default: 1.0,
                 "x-options": { widget: "slider" },
               },
-              max_iterations: {
-                title: "Max Iterations",
+              amplitude: {
+                title: "Amplitude",
                 type: "number",
-                minimum: 1,
-                maximum: 10000,
-                multipleOf: 1,
-                default: 1000,
+                minimum: 0.1,
+                maximum: 2.0,
+                multipleOf: 0.1,
+                default: 1.0,
+                "x-options": { widget: "slider" },
               },
-              solver: {
-                title: "Solver",
-                type: "string",
-                enum: ["euler", "rk4", "adams"],
-                default: "rk4",
-                "x-options": { widget: "select" },
+              time_step: {
+                title: "Time Step",
+                type: "number",
+                minimum: 0.01,
+                maximum: 0.5,
+                multipleOf: 0.01,
+                default: 0.1,
+                "x-options": { widget: "slider" },
               },
             },
           },

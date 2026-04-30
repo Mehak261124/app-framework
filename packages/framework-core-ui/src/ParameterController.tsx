@@ -155,15 +155,15 @@ export function ParameterControllerComponent({
               {widget === "slider" && (
                 <div className={`${PREFIX}-slider-wrapper`}>
                   <Slider
+                    key={`${key}-${config.default}`}
                     id={`param-${key}`}
                     aria-label={config.title}
                     min={config.minimum ?? 0}
                     max={config.maximum ?? 100}
                     step={config.multipleOf ?? 1}
-                    value={[value as number]}
+                    defaultValue={config.default as number}
                     onValueChange={(newValue) => {
-                      const v = Array.isArray(newValue) ? newValue[0] : newValue;
-                      handleChange(key, v, true);
+                      handleChange(key, newValue as number, true);
                     }}
                   />
                   <span className={`${PREFIX}-value`}>
