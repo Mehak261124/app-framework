@@ -18,21 +18,41 @@ export type ParameterType = "string" | "number";
 export type ParameterWidget = "slider" | "input" | "select";
 
 export interface ParameterConfig {
+  /** Display label shown above the control. */
   title: string;
+  /** JSON schema type. */
   type: ParameterType;
+  /** Default value applied on mount. */
   default: number | string;
+  /** Minimum value — for slider and number input. */
   minimum?: number;
+  /** Maximum value — for slider and number input. */
   maximum?: number;
+  /** Step increment — for slider and number input. */
   multipleOf?: number;
+  /** Options list — for select. */
   enum?: string[];
+  /** Widget rendering options. */
   "x-options"?: {
     widget?: ParameterWidget;
   };
 }
 
 export interface ParameterControllerProps {
+  /**
+   * EventBus channel to publish parameter updates to.
+   * Default: "params/control"
+   */
   channel?: string;
+  /**
+   * Parameter definitions keyed by parameter name.
+   * The key is used as the field name in the published payload.
+   */
   parameters?: Record<string, ParameterConfig>;
+  /**
+   * Debounce delay in milliseconds for slider controls.
+   * Default: 300
+   */
   debounceMs?: number;
 }
 
