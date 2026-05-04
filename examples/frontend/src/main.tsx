@@ -14,6 +14,7 @@ import {
 import type { ShellLayout } from "@app-framework/core-ui";
 import { useSimulation } from "./useSimulation";
 import "./shell.css";
+import "@/globals.css";
 
 const registry = new WidgetRegistry();
 registry.register(PARAMETER_CONTROLLER);
@@ -55,6 +56,7 @@ const initialLayout: ShellLayout = {
           type: "ParameterController",
           props: {
             channel: "params/control",
+            debounceMs: 300,
             parameters: {
               frequency: {
                 title: "Frequency (Hz)",
@@ -70,8 +72,17 @@ const initialLayout: ShellLayout = {
                 type: "number",
                 minimum: 0.1,
                 maximum: 2.0,
-                multipleOf: 0.05,
+                multipleOf: 0.1,
                 default: 1.0,
+                "x-options": { widget: "slider" },
+              },
+              time_step: {
+                title: "Time Step",
+                type: "number",
+                minimum: 0.01,
+                maximum: 0.5,
+                multipleOf: 0.01,
+                default: 0.1,
                 "x-options": { widget: "slider" },
               },
             },

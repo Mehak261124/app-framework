@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from framework_core.bus import BaseEvent, EventBus
-from pydantic import BaseModel
 
 from .producers import sine_params
 
@@ -16,28 +15,57 @@ async def log_consumer(channel: str, message: BaseEvent) -> None:
     logger.info("[%s] %s", channel, message.model_dump())
 
 
-class SineControlParams(BaseModel):
-    """Parameter payload published by the ParameterController widget."""
+async def params_consumer(channel: str, message: BaseEvent) -> None:
+    """Update sine wave producer params when a ``params/control`` event arrives.
 
-    frequency: float = 1.0
-    amplitude: float = 1.0
+    Frontend publishes are wrapped in a ``_ClientPublishEvent`` envelope so
+    this handler unwraps the inner ``payload`` dict before reading values.
+    Unknown or malformed keys are logged and skipped.
 
+    Args:
+        channel: The channel the event arrived on.
+        message: The raw event from the EventBus.
+    """
 
-async def sine_param_consumer(channel: str, message: SineControlParams) -> None:
-    """Update the sine wave producer state when parameters change."""
+    data = message.model_dump()
+    # Frontend publishes are wrapped in _ClientPublishEvent — unwrap the payload
+    payload = data.get("payload", data)
+    if not isinstance(payload, dict):
+        return
 
-    sine_params["frequency"] = message.frequency
-    sine_params["amplitude"] = message.amplitude
+    if "frequency" in payload:
+        try:
+            sine_params.frequency = float(payload["frequency"])
+        except (TypeError, ValueError):
+            logger.warning("Invalid frequency value: %r", payload["frequency"])
+
+    if "amplitude" in payload:
+        try:
+            sine_params.amplitude = float(payload["amplitude"])
+        except (TypeError, ValueError):
+            logger.warning("Invalid amplitude value: %r", payload["amplitude"])
+
+    if "time_step" in payload:
+        try:
+            sine_params.time_step = float(payload["time_step"])
+        except (TypeError, ValueError):
+            logger.warning("Invalid time_step value: %r", payload["time_step"])
+
     logger.info(
-        "[%s] updated sine_params: freq=%.2f amp=%.2f",
+        "[%s] sine params updated: frequency=%.3f amplitude=%.3f time_step=%.3f",
         channel,
-        message.frequency,
-        message.amplitude,
+        sine_params.frequency,
+        sine_params.amplitude,
+        sine_params.time_step,
     )
 
 
 def register_consumers(bus: EventBus) -> None:
-    """Register example backend consumers on the shared EventBus."""
+    """Register example backend consumers on the shared EventBus.
+
+    Args:
+        bus: The shared EventBus to subscribe consumers on.
+    """
 
     bus.subscribe("logs/app", log_consumer)
-    bus.subscribe("params/control", sine_param_consumer)
+    bus.subscribe("params/control", params_consumer)

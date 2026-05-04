@@ -8,6 +8,12 @@ import { ChartComponent } from "./Chart";
 // Placeholder component — real implementation is in StatusIndicator.tsx.
 const StatusIndicatorPlaceholder: ComponentType = () => null;
 
+/**
+ * Built-in widget that displays live log entries arriving on log channels.
+ *
+ * Renders text/plain payloads from any channel matching `"log/*"`.
+ * Defaults to the `"bottom"` layout region.
+ */
 export const LOG_VIEWER: WidgetDefinition = {
   name: "LogViewer",
   description:
@@ -26,6 +32,12 @@ export const LOG_VIEWER: WidgetDefinition = {
   factory: () => LogViewerComponent,
 };
 
+/**
+ * Built-in widget that displays heartbeat and run status from control channels.
+ *
+ * Renders `application/x-control+json` payloads from channels matching
+ * `"control/*"`. Defaults to the `"status-bar"` layout region.
+ */
 export const STATUS_INDICATOR: WidgetDefinition = {
   name: "StatusIndicator",
   description:

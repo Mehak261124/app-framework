@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+from dataclasses import dataclass, field
 
 from framework_core.bus import BaseEvent, EventBus
 
@@ -19,31 +20,44 @@ class LogEntry(BaseEvent):  # type: ignore[misc]
     message: str
 
 
-# Mutable state updated by the parameter consumer in consumers.py.
-# Read on every tick so changes take effect immediately.
-sine_params: dict[str, float] = {
-    "frequency": 1.0,
-    "amplitude": 1.0,
-}
+@dataclass
+class SineParams:
+    """Mutable parameters for the sine wave producer.
+
+    Updated at runtime by the ``params/control`` consumer whenever the
+    frontend ``ParameterController`` widget publishes new values.
+
+    Args:
+        frequency: Wave frequency in Hz.
+        amplitude: Wave amplitude (peak value).
+        time_step: Elapsed-time increment per tick (seconds).
+    """
+
+    frequency: float = field(default=1.0)
+    amplitude: float = field(default=1.0)
+    time_step: float = field(default=0.1)
+
+
+#: Shared singleton — consumers write to this, the producer reads from it.
+sine_params: SineParams = SineParams()
 
 
 async def start_sine_wave_producer(bus: EventBus) -> None:
     """Publish a sine wave reading to ``data/sine`` every 100 ms.
 
-    Reads ``frequency`` and ``amplitude`` from ``sine_params`` on every tick
-    so that parameter changes from the ParameterController take effect
-    immediately without restarting the producer.
+    The wave shape is controlled by :data:`sine_params` which is updated
+    in real time by the ``params/control`` consumer.
+
+    Args:
+        bus: The shared EventBus to publish events on.
     """
 
     t = 0.0
     while True:
-        freq = sine_params["frequency"]
-        amp = sine_params["amplitude"]
-        await bus.publish(
-            "data/sine",
-            SineReading(value=amp * math.sin(2 * math.pi * freq * t)),
-        )
-        t += 0.1
+        params = sine_params
+        value = params.amplitude * math.sin(2 * math.pi * params.frequency * t)
+        await bus.publish("data/sine", SineReading(value=value))
+        t += params.time_step
         await asyncio.sleep(0.1)
 
 
