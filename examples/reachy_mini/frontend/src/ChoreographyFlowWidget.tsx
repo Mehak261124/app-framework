@@ -4,16 +4,15 @@ import {
   Background,
   Controls,
   Handle,
+  MarkerType,
   Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
-  useEdgesState,
   useNodeId,
   useNodesState,
 } from "@xyflow/react";
-import type { Connection, NodeProps, NodeTypes } from "@xyflow/react";
+import type { NodeProps, NodeTypes } from "@xyflow/react";
 import { useChannel, usePublish } from "@app-framework/core-ui";
 import type { WidgetDefinition } from "@app-framework/core-ui";
 import "@xyflow/react/dist/style.css";
@@ -24,6 +23,7 @@ import {
   FACTOR_MIN,
   addStep,
   buildInitialGraph,
+  chainEdges,
   clampFactor,
   removeStep,
   serializeSequence,
@@ -37,7 +37,7 @@ import type { ReachyFrame, StepSpecPayload } from "./useReachy";
 interface ChoreoActions {
   /** Merge a partial data patch into the step node with `id`. */
   updateStep: (id: string, patch: Partial<StepNodeData>) => void;
-  /** Remove the step node with `id` and heal the chain. */
+  /** Remove the step node with `id`. */
   deleteStep: (id: string) => void;
 }
 
@@ -90,6 +90,7 @@ function StepNode({ data }: NodeProps) {
 
   return (
     <div className="reachy-choreo-node">
+      <Handle type="target" position={Position.Left} />
       <div className="reachy-choreo-node-header">
         <input
           className="reachy-choreo-node-label nodrag"
@@ -127,9 +128,8 @@ function StepNode({ data }: NodeProps) {
 }
 
 /**
- * Terminal sink — every step flows into the robot. Shows the live MuJoCo render
- * (the same `reachy/frame` stream as the sidebar), so a run's motion is visible
- * right here in the flow.
+ * Terminal sink at the end of the chain. Shows the live MuJoCo render (the same
+ * `reachy/frame` stream as the sidebar), so a run's motion is visible here.
  */
 function RobotNode() {
   const frame = useChannel<ReachyFrame>("reachy/frame");
@@ -158,30 +158,31 @@ function RobotNode() {
 export interface ChoreographyFlowProps {
   /** EventBus channel to publish the authored sequence to. Default `reachy/control`. */
   channel?: string;
-  /** Initial choreography shown on the canvas. Default `[]` (just Start → Robot). */
+  /** Initial choreography shown on the canvas. Default `[]` (just the Robot). */
   defaultSequence?: StepSpecPayload[];
 }
+
+const DEFAULT_EDGE_OPTIONS = {
+  markerEnd: { type: MarkerType.ArrowClosed },
+};
 
 function ChoreographyFlowInner({
   channel = "reachy/control",
   defaultSequence = [],
 }: ChoreographyFlowProps) {
   const publish = usePublish();
-  const initial = useMemo(() => buildInitialGraph(defaultSequence), [defaultSequence]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
+  const initialNodes = useMemo(
+    () => buildInitialGraph(defaultSequence),
+    [defaultSequence],
+  );
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
 
-  // Mirror the latest state so callbacks invoked from child nodes (via context)
-  // always read current nodes/edges without going stale.
+  // Edges are derived from the node order — each step links to the next, the
+  // last into the robot — so dragging a step to reorder re-links the chain.
+  const edges = useMemo(() => chainEdges(nodes), [nodes]);
+
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
-  const edgesRef = useRef(edges);
-  edgesRef.current = edges;
-
-  const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges],
-  );
 
   const actions = useMemo<ChoreoActions>(
     () => ({
@@ -189,20 +190,12 @@ function ChoreographyFlowInner({
         setNodes((nds) =>
           nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...p } } : n)),
         ),
-      deleteStep: (id) => {
-        const next = removeStep(nodesRef.current, edgesRef.current, id);
-        setNodes(next.nodes);
-        setEdges(next.edges);
-      },
+      deleteStep: (id) => setNodes((nds) => removeStep(nds, id)),
     }),
-    [setNodes, setEdges],
+    [setNodes],
   );
 
-  const handleAddStep = useCallback(() => {
-    const next = addStep(nodesRef.current, edgesRef.current);
-    setNodes(next.nodes);
-    setEdges(next.edges);
-  }, [setNodes, setEdges]);
+  const handleAddStep = useCallback(() => setNodes((nds) => addStep(nds)), [setNodes]);
 
   // Publish the authored sequence *and* start a run, so the robot immediately
   // performs the edited choreography (the backend applies params then command).
@@ -225,9 +218,8 @@ function ChoreographyFlowInner({
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
           nodeTypes={nodeTypes}
+          defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
           fitView
           proOptions={{ hideAttribution: true }}
         >
@@ -254,10 +246,11 @@ function ChoreographyFlowInner({
 /**
  * Node-based choreography editor for the Reachy Mini.
  *
- * Renders the robot's movement sequence as a React Flow graph of step-nodes
- * flowing into a terminal Robot node. Editing the graph and pressing
- * **Send to robot** publishes `{ sequence }` to the control channel, where the
- * backend applies it on the next run.
+ * Renders the robot's movement sequence as a React Flow **chain** of step-nodes
+ * (`step → step → … → Robot`) so the order is visible, ending in a Robot node
+ * that shows the live MuJoCo render. Pressing **Send to robot** publishes
+ * `{ sequence, command: "start" }` to the control channel, so the robot runs the
+ * edited choreography immediately.
  *
  * @param props See {@link ChoreographyFlowProps}.
  * @returns The choreography canvas.
@@ -285,7 +278,7 @@ export const CHOREOGRAPHY_FLOW: WidgetDefinition = {
   name: "ChoreographyFlow",
   description:
     "Node-based choreography editor (React Flow). Author the robot's movement " +
-    "sequence as a wired graph of step nodes and publish it to reachy/control.",
+    "sequence as a chain of step nodes and publish it to reachy/control.",
   channelPattern: "reachy/control",
   consumes: [],
   priority: 10,
