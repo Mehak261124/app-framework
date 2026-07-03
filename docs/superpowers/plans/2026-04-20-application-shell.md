@@ -66,12 +66,7 @@ The `ShellLayout` interface is the single source of truth for shell state that m
 ```typescript
 /** Serializable identifier for a shell region. */
 type RegionId =
-  | "header"
-  | "sidebar-left"
-  | "main"
-  | "sidebar-right"
-  | "bottom"
-  | "status-bar";
+  "header" | "sidebar-left" | "main" | "sidebar-right" | "bottom" | "status-bar";
 
 /** A single widget placement in a shell region — fully serializable, no function references. */
 interface RegionItem {
