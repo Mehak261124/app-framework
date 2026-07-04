@@ -114,21 +114,12 @@ const initialLayout: ShellLayout = {
       visible: true,
       items: [{ id: "run-controls", type: "RunControls", props: {}, order: 0 }],
     },
+    // The robot render and the amplitude parameters now live inside the
+    // ChoreographyFlow widget in the main region, so the left sidebar is hidden
+    // to keep the UI uncluttered.
     "sidebar-left": {
-      visible: true,
-      items: [
-        { id: "robot-view", type: "RobotView", props: {}, order: 0 },
-        {
-          id: "choreography-params",
-          type: "ParameterController",
-          props: {
-            channel: "reachy/control",
-            debounceMs: 300,
-            parameters: CHOREOGRAPHY_PARAMETERS,
-          },
-          order: 1,
-        },
-      ],
+      visible: false,
+      items: [],
     },
     main: {
       visible: true,
@@ -173,6 +164,10 @@ const initialLayout: ShellLayout = {
           type: "ChoreographyFlow",
           props: {
             channel: "reachy/control",
+            debounceMs: 300,
+            // Global amplitude parameters, shown as a control column beside the
+            // chain (moved here from the shell sidebar).
+            parameters: CHOREOGRAPHY_PARAMETERS,
             // Mirrors the backend's DEFAULT_SEQUENCE so the canvas opens on the
             // dance the robot already performs.
             defaultSequence: [

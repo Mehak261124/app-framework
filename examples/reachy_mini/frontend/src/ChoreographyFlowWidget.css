@@ -8,6 +8,24 @@
   height: 100%;
   min-height: 360px;
   font-family: var(--font-sans, sans-serif);
+  display: flex;
+}
+
+/* Amplitude parameters column (the framework ParameterController), moved here
+   from the shell sidebar so the whole choreography lives in one widget. */
+.reachy-choreo-params {
+  width: 232px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding-right: 10px;
+  margin-right: 10px;
+  border-right: 1px solid var(--border);
+}
+
+/* React Flow fills the remaining width beside the params column. */
+.reachy-choreo > .react-flow {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ─── Toolbar ─── */

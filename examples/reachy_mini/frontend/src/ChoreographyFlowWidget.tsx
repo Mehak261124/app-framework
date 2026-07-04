@@ -13,8 +13,12 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import type { NodeProps, NodeTypes } from "@xyflow/react";
-import { useChannel, usePublish } from "@app-framework/core-ui";
-import type { WidgetDefinition } from "@app-framework/core-ui";
+import {
+  ParameterControllerComponent,
+  useChannel,
+  usePublish,
+} from "@app-framework/core-ui";
+import type { ParameterConfig, WidgetDefinition } from "@app-framework/core-ui";
 import "@xyflow/react/dist/style.css";
 import "./ChoreographyFlowWidget.css";
 
@@ -156,10 +160,18 @@ function RobotNode() {
 
 /** Props for {@link ChoreographyFlowComponent}. */
 export interface ChoreographyFlowProps {
-  /** EventBus channel to publish the authored sequence to. Default `reachy/control`. */
+  /** EventBus channel to publish the authored sequence / parameters to. Default `reachy/control`. */
   channel?: string;
   /** Initial choreography shown on the canvas. Default `[]` (just the Robot). */
   defaultSequence?: StepSpecPayload[];
+  /**
+   * Global amplitude parameters shown as a control column beside the chain
+   * (Roll/Z/Step/Antenna/Loops). Rendered via the framework
+   * {@link ParameterControllerComponent}; changes publish to `channel`.
+   */
+  parameters?: Record<string, ParameterConfig>;
+  /** Debounce (ms) for the amplitude sliders before publishing. Default `300`. */
+  debounceMs?: number;
 }
 
 const DEFAULT_EDGE_OPTIONS = {
@@ -169,8 +181,11 @@ const DEFAULT_EDGE_OPTIONS = {
 function ChoreographyFlowInner({
   channel = "reachy/control",
   defaultSequence = [],
+  parameters,
+  debounceMs = 300,
 }: ChoreographyFlowProps) {
   const publish = usePublish();
+  const hasParams = parameters !== undefined && Object.keys(parameters).length > 0;
   const initialNodes = useMemo(
     () => buildInitialGraph(defaultSequence),
     [defaultSequence],
@@ -214,6 +229,15 @@ function ChoreographyFlowInner({
   return (
     <ChoreoActionsContext.Provider value={actions}>
       <div className="reachy-choreo">
+        {hasParams && (
+          <aside className="reachy-choreo-params" aria-label="Amplitude parameters">
+            <ParameterControllerComponent
+              channel={channel}
+              parameters={parameters}
+              debounceMs={debounceMs}
+            />
+          </aside>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
