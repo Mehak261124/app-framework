@@ -51,9 +51,7 @@ export const LOG_VIEWER: WidgetDefinition = {
   consumes: ["text/plain"],
   priority: 10,
   defaultRegion: "bottom",
-  parameters: {
-    /* unchanged */
-  },
+  parameters: {/* unchanged */},
   factory: () => LogViewerComponent, // real component — see 2.1
 };
 
@@ -64,9 +62,7 @@ export const STATUS_INDICATOR: WidgetDefinition = {
   consumes: ["application/x-control+json"],
   priority: 10,
   defaultRegion: "status-bar",
-  parameters: {
-    /* unchanged */
-  },
+  parameters: {/* unchanged */},
   factory: () => StatusIndicatorComponent, // placeholder until real component is built
 };
 ```

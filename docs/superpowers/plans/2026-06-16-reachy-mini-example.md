@@ -178,12 +178,12 @@ reachy-mini-daemon --sim
 
 ### 4.2 Safety limits (derived from SDK coordinate system)
 
-| Axis                   | Safe range  | Warning threshold | Violation threshold |
+| Axis | Safe range | Warning threshold | Violation threshold |
 | ---------------------- | ----------- | ----------------- | ------------------- | --- | --- |
-| `roll_deg` (head tilt) | ±20°        | ±30°              | ±40°                |
-| `z_mm` (head height)   | 0–25 mm     | 25–35 mm          | >35 mm              |
-| `step_duration_s`      | ≥0.5 s      | 0.3–0.5 s         | <0.3 s              |
-| `antenna`              | [-0.6, 0.6] | n/a               | >                   | 0.6 |     |
+| `roll_deg` (head tilt) | ±20° | ±30° | ±40° |
+| `z_mm` (head height) | 0–25 mm | 25–35 mm | >35 mm |
+| `step_duration_s` | ≥0.5 s | 0.3–0.5 s | <0.3 s |
+| `antenna` | [-0.6, 0.6] | n/a | > | 0.6 | |
 
 These limits will be confirmed once the simulation is running locally. They are encoded as named constants in `producers.py` so they can be adjusted without touching the logic.
 

@@ -1,11 +1,6 @@
 /** Serializable identifier for a shell region. */
 export type RegionId =
-  | "header"
-  | "sidebar-left"
-  | "main"
-  | "sidebar-right"
-  | "bottom"
-  | "status-bar";
+  "header" | "sidebar-left" | "main" | "sidebar-right" | "bottom" | "status-bar";
 
 /** A single widget placement in a shell region — fully serializable, no function references. */
 export interface RegionItem {
