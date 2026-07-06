@@ -10,7 +10,7 @@ import {
   DATA_TABLE,
   createDefaultShellLayout,
 } from "@app-framework/core-ui";
-import type { ParameterConfig, ShellLayout } from "@app-framework/core-ui";
+import type { ShellLayout } from "@app-framework/core-ui";
 import { useReachy } from "./useReachy";
 import { ROBOT_VIEW } from "./RobotViewWidget";
 import { RUN_CONTROLS } from "./RunControlsWidget";
@@ -32,55 +32,6 @@ registry.register(SAFETY_STATUS);
 registry.register(CONNECTION_STATUS);
 registry.register(CHOREOGRAPHY_FLOW);
 
-/** Choreography parameter sliders, published to ``reachy/control``. */
-const CHOREOGRAPHY_PARAMETERS: Record<string, ParameterConfig> = {
-  roll_amplitude_deg: {
-    title: "Roll Amplitude (°)",
-    type: "number",
-    minimum: 0,
-    maximum: 60,
-    multipleOf: 1,
-    default: 42,
-    "x-options": { widget: "slider" },
-  },
-  z_amplitude_mm: {
-    title: "Z Amplitude (mm)",
-    type: "number",
-    minimum: 0,
-    maximum: 50,
-    multipleOf: 1,
-    default: 36,
-    "x-options": { widget: "slider" },
-  },
-  step_duration_s: {
-    title: "Step Duration (s)",
-    type: "number",
-    minimum: 0.1,
-    maximum: 2.0,
-    multipleOf: 0.05,
-    default: 0.25,
-    "x-options": { widget: "slider" },
-  },
-  antenna_amplitude: {
-    title: "Antenna Amplitude",
-    type: "number",
-    minimum: 0,
-    maximum: 0.6,
-    multipleOf: 0.05,
-    default: 0.6,
-    "x-options": { widget: "slider" },
-  },
-  num_loops: {
-    title: "Loops",
-    type: "number",
-    minimum: 1,
-    maximum: 10,
-    multipleOf: 1,
-    default: 2,
-    "x-options": { widget: "input" },
-  },
-};
-
 // Domain guidance for the AI assistant. The framework's /ai/layout endpoint is
 // domain-agnostic — it forwards this text and the context data verbatim — so
 // all Reachy-Mini-specific knowledge (limits, parameter meanings) lives here in
@@ -94,13 +45,18 @@ context.safety: per-step safety assessment. status is "ok" | "warning" | "violat
   / warning_axes name the offending axes.
 context.parameters: the current choreography parameters.
 
+Each choreography step carries absolute values, used directly (there is no
+separate amplitude): roll_factor is the head roll in degrees, z_factor the head
+height in mm, antenna_factor the antenna position, and duration_s the step's
+own duration in seconds.
+
 Safety limits: head roll warns above ±30° and violates at ±40°; head height (z)
 warns above 25 mm and violates at 35 mm; step duration warns below 0.5 s and
 violates at/below 0.3 s.
 
-suggested_params may change any of: roll_amplitude_deg, z_amplitude_mm,
-step_duration_s, antenna_amplitude, num_loops. Propose values comfortably within
-the safe range (not just at the threshold).
+To fix a violation, advise editing the offending step in the choreography
+widget — reduce its roll/z toward the safe range, or lengthen its duration_s.
+Propose values comfortably within the safe range, not just at the threshold.
 `.trim();
 
 // Every visual is a widget inside the shell, so the AI assistant (or a future
@@ -164,22 +120,20 @@ const initialLayout: ShellLayout = {
           type: "ChoreographyFlow",
           props: {
             channel: "reachy/control",
-            debounceMs: 300,
-            // Global amplitude parameters, shown as a control column beside the
-            // chain (moved here from the shell sidebar).
-            parameters: CHOREOGRAPHY_PARAMETERS,
-            // Mirrors the backend's DEFAULT_SEQUENCE so the canvas opens on the
-            // dance the robot already performs.
+            // Mirrors the backend's DEFAULT_SEQUENCE (absolute per-step values in
+            // degrees / mm / seconds) so the canvas opens on the dance the robot
+            // performs.
             defaultSequence: [
-              { label: "tilt_right", roll_factor: 1.0 },
-              { label: "tilt_left", roll_factor: -1.0 },
+              { label: "tilt_right", roll_factor: 40, duration_s: 0.25 },
+              { label: "tilt_left", roll_factor: -40, duration_s: 0.25 },
               {
                 label: "raise_tilt_wiggle",
-                roll_factor: 0.5,
-                z_factor: 1.0,
-                antenna_factor: 1.0,
+                roll_factor: 20,
+                z_factor: 35,
+                antenna_factor: 0.6,
+                duration_s: 0.25,
               },
-              { label: "home" },
+              { label: "home", duration_s: 0.25 },
             ],
           },
           order: 2,

@@ -13,29 +13,72 @@ import type { StepSpecPayload } from "./useReachy";
  * ({@link chainEdges}), so dragging a step to reorder re-links the chain.
  */
 
-/** Inclusive lower bound for a step's amplitude factors. */
-export const FACTOR_MIN = -1;
-/** Inclusive upper bound for a step's amplitude factors. */
-export const FACTOR_MAX = 1;
-
 const ROBOT_ID = "robot";
 const NODE_GAP_X = 320;
 
-/** Data carried by a `step` node — one editable {@link StepSpecPayload}. */
+/**
+ * Data carried by a `step` node — one editable {@link StepSpecPayload}. The
+ * fields keep their `…Factor` names for wire compatibility, but now hold the
+ * **absolute** per-step values (the backend uses them directly, no amplitude
+ * multiply).
+ */
 export interface StepNodeData {
   /** Human-readable step name, e.g. `"tilt_right"`. */
   label: string;
-  /** Multiplier applied to `roll_amplitude_deg`. Range −1…1. */
+  /** Absolute head roll for this step (degrees). */
   rollFactor: number;
-  /** Multiplier applied to `z_amplitude_mm`. Range −1…1. */
+  /** Absolute head vertical position for this step (mm). */
   zFactor: number;
-  /** Multiplier applied to `antenna_amplitude`. Range −1…1. */
+  /** Absolute antenna position for this step. */
   antennaFactor: number;
+  /** Duration of this step in seconds. */
+  duration: number;
 }
 
-/** Clamp a factor to the allowed −1…1 range. */
-export function clampFactor(value: number): number {
-  return Math.min(FACTOR_MAX, Math.max(FACTOR_MIN, value));
+/** Fallback per-step duration (seconds) when a sequence entry omits one. */
+export const DEFAULT_STEP_DURATION_S = 0.5;
+
+/** Per-axis control config for a step node: absolute range, step, and display. */
+export interface AxisConfig {
+  /** Which {@link StepNodeData} field this axis edits. */
+  key: "rollFactor" | "zFactor" | "antennaFactor" | "duration";
+  /** Slider label. */
+  label: string;
+  /** Inclusive minimum (absolute). */
+  min: number;
+  /** Inclusive maximum (absolute). */
+  max: number;
+  /** Slider increment. */
+  step: number;
+  /** Decimal places to show in the value readout. */
+  decimals: number;
+}
+
+/** The three editable axes on a step node, in display order. */
+export const STEP_AXES: AxisConfig[] = [
+  { key: "rollFactor", label: "Roll (°)", min: -45, max: 45, step: 5, decimals: 0 },
+  { key: "zFactor", label: "Z (mm)", min: -50, max: 50, step: 5, decimals: 0 },
+  {
+    key: "antennaFactor",
+    label: "Antenna",
+    min: -0.6,
+    max: 0.6,
+    step: 0.05,
+    decimals: 2,
+  },
+  {
+    key: "duration",
+    label: "Duration (s)",
+    min: 0.1,
+    max: 2.0,
+    step: 0.05,
+    decimals: 2,
+  },
+];
+
+/** Clamp a value into an inclusive range. */
+export function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function stepId(index: number): string {
@@ -60,6 +103,7 @@ export function buildInitialGraph(sequence: StepSpecPayload[]): Node[] {
       rollFactor: step.roll_factor ?? 0,
       zFactor: step.z_factor ?? 0,
       antennaFactor: step.antenna_factor ?? 0,
+      duration: step.duration_s ?? DEFAULT_STEP_DURATION_S,
     },
   }));
 
@@ -94,6 +138,7 @@ export function serializeSequence(nodes: Node[]): StepSpecPayload[] {
       roll_factor: data.rollFactor,
       z_factor: data.zFactor,
       antenna_factor: data.antennaFactor,
+      duration_s: data.duration,
     };
   });
 }
@@ -110,7 +155,13 @@ export function addStep(nodes: Node[]): Node[] {
     id: stepId(nextIndex),
     type: "step",
     position: { x: steps.length * NODE_GAP_X, y: 0 },
-    data: { label: `step_${nextIndex}`, rollFactor: 0, zFactor: 0, antennaFactor: 0 },
+    data: {
+      label: `step_${nextIndex}`,
+      rollFactor: 0,
+      zFactor: 0,
+      antennaFactor: 0,
+      duration: DEFAULT_STEP_DURATION_S,
+    },
   };
 
   // Push the robot one slot to the right so it stays at the tail of the chain.

@@ -4,28 +4,28 @@ import {
   addStep,
   buildInitialGraph,
   chainEdges,
-  clampFactor,
+  clamp,
   removeStep,
   serializeSequence,
 } from "./choreography";
 import type { StepSpecPayload } from "./useReachy";
 
 const SEQ: StepSpecPayload[] = [
-  { label: "tilt_right", roll_factor: 1.0 },
-  { label: "tilt_left", roll_factor: -1.0 },
+  { label: "tilt_right", roll_factor: 40, duration_s: 0.25 },
+  { label: "tilt_left", roll_factor: -40, duration_s: 0.5 },
 ];
 
-describe("clampFactor", () => {
-  it("clamps above 1 to 1", () => {
-    expect(clampFactor(2)).toBe(1);
+describe("clamp", () => {
+  it("clamps above the max", () => {
+    expect(clamp(99, -45, 45)).toBe(45);
   });
 
-  it("clamps below -1 to -1", () => {
-    expect(clampFactor(-5)).toBe(-1);
+  it("clamps below the min", () => {
+    expect(clamp(-99, -45, 45)).toBe(-45);
   });
 
   it("leaves in-range values untouched", () => {
-    expect(clampFactor(0.5)).toBe(0.5);
+    expect(clamp(20, -45, 45)).toBe(20);
   });
 });
 
@@ -65,10 +65,22 @@ describe("chainEdges", () => {
 });
 
 describe("serializeSequence", () => {
-  it("returns steps left→right with factors defaulted to 0", () => {
+  it("returns steps left→right with absolute values incl. per-step duration", () => {
     expect(serializeSequence(buildInitialGraph(SEQ))).toEqual([
-      { label: "tilt_right", roll_factor: 1, z_factor: 0, antenna_factor: 0 },
-      { label: "tilt_left", roll_factor: -1, z_factor: 0, antenna_factor: 0 },
+      {
+        label: "tilt_right",
+        roll_factor: 40,
+        z_factor: 0,
+        antenna_factor: 0,
+        duration_s: 0.25,
+      },
+      {
+        label: "tilt_left",
+        roll_factor: -40,
+        z_factor: 0,
+        antenna_factor: 0,
+        duration_s: 0.5,
+      },
     ]);
   });
 });
@@ -89,7 +101,13 @@ describe("removeStep", () => {
     const nodes = removeStep(buildInitialGraph(SEQ), "step-0");
     expect(nodes.filter((n) => n.type === "step")).toHaveLength(1);
     expect(serializeSequence(nodes)).toEqual([
-      { label: "tilt_left", roll_factor: -1, z_factor: 0, antenna_factor: 0 },
+      {
+        label: "tilt_left",
+        roll_factor: -40,
+        z_factor: 0,
+        antenna_factor: 0,
+        duration_s: 0.5,
+      },
     ]);
     expect(chainEdges(nodes)).toEqual([
       { id: "step-1->robot", source: "step-1", target: "robot" },

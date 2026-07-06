@@ -27,7 +27,7 @@ class FakeWebSocket implements WebSocketLike {
 }
 
 const SEQ: StepSpecPayload[] = [
-  { label: "tilt_right", roll_factor: 1.0 },
+  { label: "tilt_right", roll_factor: 1.0, duration_s: 0.25 },
   { label: "tilt_left" },
 ];
 
@@ -47,17 +47,18 @@ async function renderWidget(defaultSequence: StepSpecPayload[] = SEQ) {
   return { socket };
 }
 
+interface SequencePayload {
+  sequence: StepSpecPayload[];
+  command?: string;
+}
+
 /** Full sequence-carrying payloads published to reachy/control. */
-function publishedPayloads(
-  socket: FakeWebSocket,
-): { sequence: StepSpecPayload[]; command?: string }[] {
+function publishedPayloads(socket: FakeWebSocket): SequencePayload[] {
   return socket.sent
     .map((raw) => JSON.parse(raw) as Record<string, unknown>)
     .filter((m) => m.action === "publish" && m.channel === "reachy/control")
-    .map((m) => m.payload as { sequence?: StepSpecPayload[]; command?: string })
-    .filter((p): p is { sequence: StepSpecPayload[]; command?: string } =>
-      Array.isArray(p.sequence),
-    );
+    .map((m) => m.payload as Partial<SequencePayload>)
+    .filter((p): p is SequencePayload => Array.isArray(p.sequence));
 }
 
 describe("ChoreographyFlow widget", () => {
@@ -86,8 +87,20 @@ describe("ChoreographyFlow widget", () => {
     expect(payloads[0]).toEqual({
       command: "start",
       sequence: [
-        { label: "tilt_right", roll_factor: 1, z_factor: 0, antenna_factor: 0 },
-        { label: "tilt_left", roll_factor: 0, z_factor: 0, antenna_factor: 0 },
+        {
+          label: "tilt_right",
+          roll_factor: 1,
+          z_factor: 0,
+          antenna_factor: 0,
+          duration_s: 0.25,
+        },
+        {
+          label: "tilt_left",
+          roll_factor: 0,
+          z_factor: 0,
+          antenna_factor: 0,
+          duration_s: 0.5,
+        },
       ],
     });
   });

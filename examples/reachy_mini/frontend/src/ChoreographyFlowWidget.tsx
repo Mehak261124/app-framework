@@ -13,22 +13,17 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import type { NodeProps, NodeTypes } from "@xyflow/react";
-import {
-  ParameterControllerComponent,
-  useChannel,
-  usePublish,
-} from "@app-framework/core-ui";
-import type { ParameterConfig, WidgetDefinition } from "@app-framework/core-ui";
+import { useChannel, usePublish } from "@app-framework/core-ui";
+import type { WidgetDefinition } from "@app-framework/core-ui";
 import "@xyflow/react/dist/style.css";
 import "./ChoreographyFlowWidget.css";
 
 import {
-  FACTOR_MAX,
-  FACTOR_MIN,
+  STEP_AXES,
   addStep,
   buildInitialGraph,
   chainEdges,
-  clampFactor,
+  clamp,
   removeStep,
   serializeSequence,
 } from "./choreography";
@@ -55,14 +50,22 @@ function useChoreoActions(): ChoreoActions {
 
 // ─── Custom nodes ───────────────────────────────────────────────────────────────
 
-/** A single factor control (labelled range slider, clamped to −1…1). */
+/** A single axis control — a labelled range slider in real units. */
 function FactorRow({
   label,
   value,
+  min,
+  max,
+  step,
+  decimals,
   onChange,
 }: {
   label: string;
   value: number;
+  min: number;
+  max: number;
+  step: number;
+  decimals: number;
   onChange: (value: number) => void;
 }) {
   return (
@@ -74,18 +77,18 @@ function FactorRow({
         // the React Flow node.
         className="nodrag"
         aria-label={label}
-        min={FACTOR_MIN}
-        max={FACTOR_MAX}
-        step={0.1}
+        min={min}
+        max={max}
+        step={step}
         value={value}
-        onChange={(e) => onChange(clampFactor(e.currentTarget.valueAsNumber))}
+        onChange={(e) => onChange(clamp(e.currentTarget.valueAsNumber, min, max))}
       />
-      <span className="reachy-choreo-factor-value">{value.toFixed(1)}</span>
+      <span className="reachy-choreo-factor-value">{value.toFixed(decimals)}</span>
     </label>
   );
 }
 
-/** Editable choreography step: label + roll/z/antenna factor sliders. */
+/** Editable choreography step: label + roll/z/antenna/duration sliders. */
 function StepNode({ data }: NodeProps) {
   const id = useNodeId();
   const { updateStep, deleteStep } = useChoreoActions();
@@ -111,21 +114,18 @@ function StepNode({ data }: NodeProps) {
           ×
         </button>
       </div>
-      <FactorRow
-        label="Roll"
-        value={step.rollFactor}
-        onChange={(v) => patch({ rollFactor: v })}
-      />
-      <FactorRow
-        label="Z"
-        value={step.zFactor}
-        onChange={(v) => patch({ zFactor: v })}
-      />
-      <FactorRow
-        label="Antenna"
-        value={step.antennaFactor}
-        onChange={(v) => patch({ antennaFactor: v })}
-      />
+      {STEP_AXES.map((axis) => (
+        <FactorRow
+          key={axis.key}
+          label={axis.label}
+          value={step[axis.key]}
+          min={axis.min}
+          max={axis.max}
+          step={axis.step}
+          decimals={axis.decimals}
+          onChange={(v) => patch({ [axis.key]: v })}
+        />
+      ))}
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -160,18 +160,10 @@ function RobotNode() {
 
 /** Props for {@link ChoreographyFlowComponent}. */
 export interface ChoreographyFlowProps {
-  /** EventBus channel to publish the authored sequence / parameters to. Default `reachy/control`. */
+  /** EventBus channel to publish the authored sequence to. Default `reachy/control`. */
   channel?: string;
   /** Initial choreography shown on the canvas. Default `[]` (just the Robot). */
   defaultSequence?: StepSpecPayload[];
-  /**
-   * Global amplitude parameters shown as a control column beside the chain
-   * (Roll/Z/Step/Antenna/Loops). Rendered via the framework
-   * {@link ParameterControllerComponent}; changes publish to `channel`.
-   */
-  parameters?: Record<string, ParameterConfig>;
-  /** Debounce (ms) for the amplitude sliders before publishing. Default `300`. */
-  debounceMs?: number;
 }
 
 const DEFAULT_EDGE_OPTIONS = {
@@ -181,11 +173,8 @@ const DEFAULT_EDGE_OPTIONS = {
 function ChoreographyFlowInner({
   channel = "reachy/control",
   defaultSequence = [],
-  parameters,
-  debounceMs = 300,
 }: ChoreographyFlowProps) {
   const publish = usePublish();
-  const hasParams = parameters !== undefined && Object.keys(parameters).length > 0;
   const initialNodes = useMemo(
     () => buildInitialGraph(defaultSequence),
     [defaultSequence],
@@ -212,8 +201,8 @@ function ChoreographyFlowInner({
 
   const handleAddStep = useCallback(() => setNodes((nds) => addStep(nds)), [setNodes]);
 
-  // Publish the authored sequence *and* start a run, so the robot immediately
-  // performs the edited choreography (the backend applies params then command).
+  // Publish the authored sequence (each step carries its own duration) *and*
+  // start a run, so the robot immediately performs the edited choreography.
   const handleSend = useCallback(() => {
     publish(channel, {
       sequence: serializeSequence(nodesRef.current),
@@ -229,15 +218,6 @@ function ChoreographyFlowInner({
   return (
     <ChoreoActionsContext.Provider value={actions}>
       <div className="reachy-choreo">
-        {hasParams && (
-          <aside className="reachy-choreo-params" aria-label="Amplitude parameters">
-            <ParameterControllerComponent
-              channel={channel}
-              parameters={parameters}
-              debounceMs={debounceMs}
-            />
-          </aside>
-        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -282,7 +262,7 @@ function ChoreographyFlowInner({
  * ```tsx
  * <ChoreographyFlowComponent
  *   channel="reachy/control"
- *   defaultSequence={[{ label: "tilt_right", roll_factor: 1 }]}
+ *   defaultSequence={[{ label: "tilt_right", roll_factor: 40, duration_s: 0.25 }]}
  * />
  * ```
  */

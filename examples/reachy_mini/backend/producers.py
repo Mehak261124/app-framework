@@ -182,38 +182,48 @@ class ReachyControlEvent(BaseEvent):
 
 @dataclass
 class StepSpec:
-    """One step in a choreography sequence, expressed as amplitude factors.
+    """One step in a choreography sequence, expressed as absolute values.
 
     A step is resolved into an executable :class:`ChoreographyStep` by
-    multiplying these factors against the live amplitude/duration params at
-    build time (see :func:`build_steps`). This indirection is what lets the
-    sequence itself be replaced — e.g. from a frontend-authored widget, or an
-    AI-suggested fix — without changing how amplitudes are interpreted.
+    :func:`build_steps`, which uses these values directly. Keeping the
+    sequence self-contained is what lets it be replaced — e.g. from a
+    frontend-authored widget, or an AI-suggested fix — without touching how
+    steps are interpreted.
     """
 
     label: str
     """Human-readable name for this step, e.g. ``"tilt_right"``."""
 
     roll_factor: float = 0.0
-    """Multiplier applied to ``roll_amplitude_deg``."""
+    """Absolute head roll for this step (degrees). Field name kept for wire
+    compatibility; it is used directly, not multiplied by an amplitude."""
 
     z_factor: float = 0.0
-    """Multiplier applied to ``z_amplitude_mm``."""
+    """Absolute head vertical position for this step (mm)."""
 
     antenna_factor: float = 0.0
-    """Multiplier applied to ``antenna_amplitude``; the right antenna gets
-    the negated value, so a positive factor wiggles the antennas apart."""
+    """Absolute antenna position for this step; the right antenna gets the
+    negated value, so a positive value wiggles the antennas apart."""
+
+    duration_s: float = 0.5
+    """Duration of this step in seconds."""
 
 
 DEFAULT_SEQUENCE: list[StepSpec] = [
-    StepSpec(label="tilt_right", roll_factor=1.0),
-    StepSpec(label="tilt_left", roll_factor=-1.0),
+    StepSpec(label="tilt_right", roll_factor=40.0, duration_s=0.25),
+    StepSpec(label="tilt_left", roll_factor=-40.0, duration_s=0.25),
     StepSpec(
-        label="raise_tilt_wiggle", roll_factor=0.5, z_factor=1.0, antenna_factor=1.0
+        label="raise_tilt_wiggle",
+        roll_factor=20.0,
+        z_factor=35.0,
+        antenna_factor=0.6,
+        duration_s=0.25,
     ),
-    StepSpec(label="home"),
+    StepSpec(label="home", duration_s=0.25),
 ]
-"""Default 4-step greeting sequence: tilt right, tilt left, raise+tilt+wiggle, home."""
+"""Default 4-step greeting (absolute values): the large tilt/z plus the short
+per-step duration here trip the safety limits, so the demo opens in a visibly
+broken state."""
 
 
 # ─── Parameters and presets ───────────────────────────────────────────────────
@@ -248,23 +258,34 @@ class ChoreographyParams:
     :func:`build_steps`."""
 
 
+# Gentle absolute sequence — all steps stay within the safe limits.
+SAFE_SEQUENCE: list[StepSpec] = [
+    StepSpec(label="tilt_right", roll_factor=15.0, duration_s=1.0),
+    StepSpec(label="tilt_left", roll_factor=-15.0, duration_s=1.0),
+    StepSpec(
+        label="raise_tilt_wiggle",
+        roll_factor=10.0,
+        z_factor=15.0,
+        antenna_factor=0.4,
+        duration_s=1.0,
+    ),
+    StepSpec(label="home", duration_s=1.0),
+]
+
 SAFE_PRESET = ChoreographyParams(
-    roll_amplitude_deg=15.0,
-    z_amplitude_mm=15.0,
     step_duration_s=1.0,
-    antenna_amplitude=0.4,
     num_loops=2,
+    sequence=list(SAFE_SEQUENCE),
 )
 """Conservative parameters — all steps remain within safe limits."""
 
 AGGRESSIVE_PRESET = ChoreographyParams(
-    roll_amplitude_deg=42.0,
-    z_amplitude_mm=36.0,
     step_duration_s=0.25,
-    antenna_amplitude=0.6,
     num_loops=2,
+    sequence=list(DEFAULT_SEQUENCE),
 )
-"""Intentionally unsafe parameters — triggers roll + z + duration violations."""
+"""Intentionally unsafe — the large default sequence + short duration trip the
+roll, z, and duration limits."""
 
 # ─── Choreography step ────────────────────────────────────────────────────────
 
@@ -301,11 +322,10 @@ class ChoreographyStep:
 def build_steps(params: ChoreographyParams) -> list[ChoreographyStep]:
     """Resolve ``params.sequence`` into an executable list of steps.
 
-    Each :class:`StepSpec` factor is multiplied against the live amplitude
-    and duration params to produce a concrete :class:`ChoreographyStep`.
-    Swapping ``params.sequence`` (e.g. from a frontend-authored widget, or an
-    AI-suggested fix) changes the resulting choreography without any change
-    here.
+    Each :class:`StepSpec` carries the absolute per-step roll/z/antenna values
+    and its own duration, all used directly. Swapping ``params.sequence`` (e.g.
+    from a frontend-authored widget, or an AI-suggested fix) changes the
+    resulting choreography without any change here.
 
     Args:
         params: Current choreography parameters, including the sequence.
@@ -318,11 +338,11 @@ def build_steps(params: ChoreographyParams) -> list[ChoreographyStep]:
         ChoreographyStep(
             step_idx=idx,
             label=spec.label,
-            roll_deg=spec.roll_factor * params.roll_amplitude_deg,
-            z_mm=spec.z_factor * params.z_amplitude_mm,
-            antenna_l=spec.antenna_factor * params.antenna_amplitude,
-            antenna_r=-spec.antenna_factor * params.antenna_amplitude,
-            duration_s=params.step_duration_s,
+            roll_deg=spec.roll_factor,
+            z_mm=spec.z_factor,
+            antenna_l=spec.antenna_factor,
+            antenna_r=-spec.antenna_factor,
+            duration_s=spec.duration_s,
         )
         for idx, spec in enumerate(params.sequence)
     ]
@@ -478,9 +498,7 @@ async def run_choreography(
             level="info",
             message=(
                 f"Starting {params.num_loops} loop(s) — "
-                f"roll={params.roll_amplitude_deg}°, "
-                f"z={params.z_amplitude_mm}mm, "
-                f"duration={params.step_duration_s}s"
+                f"{len(params.sequence)} step(s)"
             ),
         ),
     )
