@@ -167,8 +167,9 @@ class ReachyControlEvent(BaseEvent):
     """New loop count, or ``None`` if unchanged."""
 
     sequence: list[dict[str, str | float]] | None = None
-    """New choreography sequence as a list of step-factor dicts (``label``,
-    ``roll_factor``, ``z_factor``, ``antenna_factor``), or ``None`` if unchanged."""
+    """New choreography sequence as a list of step dicts (``label``,
+    ``roll_factor``, ``z_factor``, ``antenna_factor``, ``duration_s``), or
+    ``None`` if unchanged."""
 
     preset: str | None = None
     """Apply a named preset: ``"safe"`` | ``"aggressive"`` | ``None``."""
@@ -497,8 +498,7 @@ async def run_choreography(
         ReachyLogEvent(
             level="info",
             message=(
-                f"Starting {params.num_loops} loop(s) — "
-                f"{len(params.sequence)} step(s)"
+                f"Starting {params.num_loops} loop(s) — {len(params.sequence)} step(s)"
             ),
         ),
     )
