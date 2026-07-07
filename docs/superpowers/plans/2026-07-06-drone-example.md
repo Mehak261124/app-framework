@@ -279,15 +279,9 @@ node editor — §1.4.)
 interface DroneTelemetry {
   t: number; // sim time (s)
   segment: number;
-  x: number;
-  y: number;
-  z: number; // position (m)
-  roll: number;
-  pitch: number;
-  yaw: number; // attitude (deg)
-  vx: number;
-  vy: number;
-  vz: number; // velocity (m/s)
+  position: number[]; // position (m)
+  attitude: number[]; // attitude (deg)
+  velocity: number[]; // velocity (m/s)
   prop_w: number[]; // 4 propeller speeds (rad/s)
 }
 
