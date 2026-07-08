@@ -10,8 +10,7 @@ requires-python = ">=3.11,<3.13"
 dependencies = [
     "framework-core",
     "fastapi",
-    # [standard] pulls in `websockets`, which the /ws EventBus bridge needs —
-    # plain `uvicorn` 404s on the WebSocket upgrade.
+    # [standard] pulls in `websockets`, which the /ws EventBus bridge needs
     "uvicorn[standard]",
     "fmpy",
 ]
