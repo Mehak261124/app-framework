@@ -189,43 +189,40 @@ tweak, or a combination. The engineer approves suggested params, which publish t
   it can inject setpoints and read outputs every step, rather than `simulate_fmu`
   (which runs to completion in one shot).
 
-**⚠️ Assumption to verify before anything else (the biggest risk).** The whole
-"manoeuvre = several setpoint segments, some at high frequency, within one run"
-idea requires the target setpoints to be **settable during** co-simulation — i.e.
-`targetX/Y/Z` must be FMI **inputs** (`causality="input"`) or **tunable
-parameters**. The exploratory runs so far set a _single fixed_ target per run
-(one simulation → final position), which does **not** prove per-step injection
-works. **Task 1 checks `modelDescription.xml`:**
-
-- **Inputs / tunable** → set them in the `doStep` loop (the plan above). ✅ full
-  concept works, including the high-frequency responsiveness test.
-- **Fixed parameters only** → fall back to **one FMU run per segment**
-  (re-instantiate per setpoint, concatenate results). Per-segment stability still
-  works, but the intra-run "high-frequency change" responsiveness test would not
-  — we'd reframe responsiveness as settling-time-per-step instead. This
-  materially affects the problem framing (§1.2), so it is resolved first.
+**✅ Biggest risk RESOLVED (Task 0, 2026-07-08).** The setpoints are FMI
+**inputs** (`causality="input"`), so per-step injection in the `doStep` loop
+works and the full concept — including the high-frequency responsiveness test —
+is viable. Confirmed by reading `modelDescription.xml`: the FMU is **FMI 2.0
+CoSimulation** (`modelIdentifier="Drone"`,
+`canHandleVariableCommunicationStepSize=true`). The setpoint inputs are named
+`xcoord` / `ycoord` / `zcoord` (not the spec's earlier guess `targetX/Y/Z`).
+The fixed-parameter fallback (one FMU run per segment) is therefore **not
+needed**.
 
 ### 4.2 FMU variables used
 
-Inputs (position setpoints — the "command"):
+Inputs (position setpoints — the "command"), confirmed in `modelDescription.xml`:
 
-| Input     | Meaning                      |
-| --------- | ---------------------------- |
-| `targetX` | Commanded North position (m) |
-| `targetY` | Commanded East position (m)  |
-| `targetZ` | Commanded altitude (m)       |
+| Input    | Value ref | Meaning                      |
+| -------- | --------- | ---------------------------- |
+| `xcoord` | 352321536 | Commanded North position (m) |
+| `ycoord` | 352321538 | Commanded East position (m)  |
+| `zcoord` | 352321537 | Commanded altitude (m)       |
 
-Outputs (read every step; names per the model's variable list):
+Outputs read every step (value references confirmed in `modelDescription.xml`;
+the rich attitude/velocity/propeller signals are `causality="None"` **local**
+variables, read directly by value reference via `fmi2GetReal`):
 
-| Output                                            | Mapped telemetry field           |
-| ------------------------------------------------- | -------------------------------- |
-| `droneChassis1.bodyShape2.body.frame_a.r_0[1..3]` | `x`, `y`, `z` (m)                |
-| `droneChassis1.bodyShape3.body.phi[1..3]`         | `roll`, `pitch`, `yaw` (rad→deg) |
-| `droneChassis1.bodyShape3.v_0[1..3]`              | `vx`, `vy`, `vz` (m/s)           |
-| `propellerRev{,1,2,3}.revolute.w`                 | `prop_w[0..3]` (rad/s)           |
+| Variable                                          | VR(s)                  | Mapped telemetry field           |
+| ------------------------------------------------- | ---------------------- | -------------------------------- |
+| `droneChassis1.bodyShape2.body.frame_a.r_0[1..3]` | 33554432/433/434       | `x`, `y`, `z` (m)                |
+| `droneChassis1.bodyShape3.body.phi[1..3]`         | 33554438/439/440       | `roll`, `pitch`, `yaw` (rad→deg) |
+| `droneChassis1.bodyShape3.v_0[1..3]`              | 33554435/436/437       | `vx`, `vy`, `vz` (m/s)           |
+| `propellerRev{,1,2,3}.revolute.w`                 | 33554445/448/451/454   | `prop_w[0..3]` (rad/s)           |
 
-Exact variable names are confirmed against the FMU's `modelDescription.xml` at
-implementation time (they are read via FMPy's `read_model_description`).
+(The official `output` variables `xgps`/`ygps`/`zgps` mirror the r_0 position;
+we read `r_0` for consistency with the attitude/velocity locals.) Names are
+resolved at runtime via FMPy's `read_model_description`, not hard-coded blindly.
 
 ### 4.3 Stability & responsiveness limits (the pass/fail criteria)
 
@@ -446,8 +443,9 @@ and the active-preset highlight in sync without waiting for a round-trip.
 ## 11. Implementation Checklist
 
 ```
-- [ ] Task 0: Verify targetX/Y/Z causality in modelDescription.xml (input/tunable
-      vs fixed param) — decides the runner design + responsiveness framing (§4.1)
+- [x] Task 0: Verify setpoint causality in modelDescription.xml — DONE: they are
+      FMI inputs (`xcoord`/`ycoord`/`zcoord`), FMI 2.0 CoSimulation; per-step
+      injection works, no fallback needed (§4.1)
 - [ ] Task 1: Backend scaffolding (examples/drone/backend, pyproject, vendored FMU)
 - [ ] Task 2: DroneFmuRunner — FMPy co-sim loop, setpoint injection, telemetry publish
 - [ ] Task 3: stability.assess — §4.3 limits, margins, status
