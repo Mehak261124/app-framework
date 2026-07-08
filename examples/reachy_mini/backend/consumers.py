@@ -211,7 +211,8 @@ def _set_sequence(params: ChoreographyParams, value: object) -> None:
         params: The params object to mutate.
         value: Expected to be a list of dicts with keys ``label`` (str) and
             optional ``roll_factor``, ``z_factor``, ``antenna_factor``
-            (floats, default 0.0), or ``None`` if unchanged.
+            (floats, default 0.0) and ``duration_s`` (float, default 0.5), or
+            ``None`` if unchanged.
     """
     if value is None:
         return
@@ -225,6 +226,7 @@ def _set_sequence(params: ChoreographyParams, value: object) -> None:
                 roll_factor=float(step.get("roll_factor", 0.0)),
                 z_factor=float(step.get("z_factor", 0.0)),
                 antenna_factor=float(step.get("antenna_factor", 0.0)),
+                duration_s=float(step.get("duration_s", 0.5)),
             )
             for idx, step in enumerate(value)
         ]
