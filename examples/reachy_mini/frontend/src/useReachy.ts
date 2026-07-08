@@ -54,12 +54,18 @@ export interface ReachyFrame extends BaseEvent {
   image: string;
 }
 
-/** A single choreography step expressed as amplitude factors. */
+/** A single choreography step expressed as absolute per-step values. */
 export interface StepSpecPayload {
+  /** Human-readable step name, e.g. ``"tilt_right"``. */
   label: string;
+  /** Absolute head roll for this step (degrees). */
   roll_factor?: number;
+  /** Absolute head vertical position for this step (mm). */
   z_factor?: number;
+  /** Absolute antenna position for this step. */
   antenna_factor?: number;
+  /** Duration of this step in seconds. */
+  duration_s?: number;
 }
 
 /**

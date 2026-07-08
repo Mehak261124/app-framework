@@ -90,12 +90,13 @@ def test_set_sequence_replaces_steps() -> None:
     _set_sequence(
         params,
         [
-            {"label": "nod", "roll_factor": 0.3},
+            {"label": "nod", "roll_factor": 0.3, "duration_s": 0.4},
             {"label": "rise", "z_factor": 0.5},
         ],
     )
     assert [s.label for s in params.sequence] == ["nod", "rise"]
     assert params.sequence[0].roll_factor == pytest.approx(0.3)
+    assert params.sequence[0].duration_s == pytest.approx(0.4)
     assert params.sequence[1].z_factor == pytest.approx(0.5)
 
 
@@ -106,6 +107,7 @@ def test_set_sequence_defaults_missing_factors_to_zero() -> None:
     assert step.roll_factor == 0.0
     assert step.z_factor == 0.0
     assert step.antenna_factor == 0.0
+    assert step.duration_s == pytest.approx(0.5)
 
 
 def test_set_sequence_skips_none() -> None:

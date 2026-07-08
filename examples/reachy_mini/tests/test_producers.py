@@ -143,37 +143,38 @@ def test_build_steps_indices() -> None:
     assert [s.step_idx for s in steps] == [0, 1, 2, 3]
 
 
-def test_build_steps_roll_amplitudes() -> None:
-    params = ChoreographyParams(roll_amplitude_deg=20.0)
+def test_build_steps_uses_absolute_values() -> None:
+    """Step roll/z/antenna are used directly (no amplitude multiply)."""
+    params = ChoreographyParams(
+        sequence=[
+            StepSpec(label="s", roll_factor=25.0, z_factor=30.0, antenna_factor=0.5)
+        ]
+    )
+    step = build_steps(params)[0]
+    assert step.roll_deg == pytest.approx(25.0)
+    assert step.z_mm == pytest.approx(30.0)
+    assert step.antenna_l == pytest.approx(0.5)
+    assert step.antenna_r == pytest.approx(-0.5)
+
+
+def test_build_steps_default_sequence_values() -> None:
+    steps = build_steps(ChoreographyParams())
+    assert [s.roll_deg for s in steps] == pytest.approx([40.0, -40.0, 20.0, 0.0])
+    assert steps[2].z_mm == pytest.approx(35.0)
+    assert steps[2].antenna_l == pytest.approx(0.6)
+    assert [s.duration_s for s in steps] == pytest.approx([0.25, 0.25, 0.25, 0.25])
+
+
+def test_build_steps_uses_per_step_duration() -> None:
+    """Each step's own duration_s flows through (no global override)."""
+    params = ChoreographyParams(
+        sequence=[
+            StepSpec(label="quick", duration_s=0.2),
+            StepSpec(label="slow", duration_s=1.5),
+        ]
+    )
     steps = build_steps(params)
-    assert steps[0].roll_deg == pytest.approx(20.0)  # tilt right
-    assert steps[1].roll_deg == pytest.approx(-20.0)  # tilt left
-    assert steps[2].roll_deg == pytest.approx(10.0)  # half amplitude
-    assert steps[3].roll_deg == pytest.approx(0.0)  # home
-
-
-def test_build_steps_z_amplitudes() -> None:
-    params = ChoreographyParams(z_amplitude_mm=18.0)
-    steps = build_steps(params)
-    assert steps[0].z_mm == pytest.approx(0.0)
-    assert steps[1].z_mm == pytest.approx(0.0)
-    assert steps[2].z_mm == pytest.approx(18.0)
-    assert steps[3].z_mm == pytest.approx(0.0)
-
-
-def test_build_steps_antenna_amplitudes() -> None:
-    params = ChoreographyParams(antenna_amplitude=0.5)
-    steps = build_steps(params)
-    assert steps[0].antenna_l == pytest.approx(0.0)
-    assert steps[2].antenna_l == pytest.approx(0.5)
-    assert steps[2].antenna_r == pytest.approx(-0.5)
-    assert steps[3].antenna_l == pytest.approx(0.0)
-
-
-def test_build_steps_duration_applied_to_all() -> None:
-    params = ChoreographyParams(step_duration_s=0.8)
-    steps = build_steps(params)
-    assert all(s.duration_s == pytest.approx(0.8) for s in steps)
+    assert [s.duration_s for s in steps] == pytest.approx([0.2, 1.5])
 
 
 def test_build_steps_default_params_use_default_sequence() -> None:
@@ -187,18 +188,16 @@ def test_build_steps_default_params_use_default_sequence() -> None:
 def test_build_steps_custom_sequence_overrides_default() -> None:
     """A custom sequence on params produces steps matching only that sequence."""
     custom_sequence = [
-        StepSpec(label="nod", roll_factor=0.3),
-        StepSpec(label="rise", z_factor=0.5),
+        StepSpec(label="nod", roll_factor=12.0),
+        StepSpec(label="rise", z_factor=18.0),
     ]
-    params = ChoreographyParams(
-        roll_amplitude_deg=10.0, z_amplitude_mm=20.0, sequence=custom_sequence
-    )
+    params = ChoreographyParams(sequence=custom_sequence)
     steps = build_steps(params)
     assert len(steps) == 2
     assert steps[0].label == "nod"
-    assert steps[0].roll_deg == pytest.approx(3.0)
+    assert steps[0].roll_deg == pytest.approx(12.0)
     assert steps[1].label == "rise"
-    assert steps[1].z_mm == pytest.approx(10.0)
+    assert steps[1].z_mm == pytest.approx(18.0)
 
 
 def test_choreography_params_default_sequence_is_not_shared_mutable_state() -> None:
@@ -402,11 +401,9 @@ async def test_run_choreography_warning_message_names_the_axis(
     bus.subscribe("reachy/state", capture)
 
     warning_params = ChoreographyParams(
-        roll_amplitude_deg=ROLL_WARN_DEG + 1.0,
-        z_amplitude_mm=0.0,
         step_duration_s=1.0,
-        antenna_amplitude=0.4,
         num_loops=1,
+        sequence=[StepSpec(label="tilt", roll_factor=ROLL_WARN_DEG + 1.0)],
     )
 
     with _NO_SLEEP:
