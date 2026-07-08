@@ -129,3 +129,20 @@ async def test_setpoint_is_applied_each_segment(bus_and_events) -> None:
     seg1 = [e for e in got["drone/telemetry"] if e.segment == 1]
     assert seg0[-1].target[0] == pytest.approx(3.0)
     assert seg1[-1].target[0] == pytest.approx(0.0)
+
+
+@pytest.mark.anyio
+async def test_publishes_hover_warmup_telemetry_before_segments(bus_and_events) -> None:
+    bus, got = bus_and_events
+    await run_manoeuvre(bus, _SHORT, StubFmu(roll_deg=5.0), dt=0.05)
+    # The hover warm-up publishes telemetry tagged segment -1.
+    assert any(e.segment == -1 for e in got["drone/telemetry"])
+
+
+@pytest.mark.anyio
+async def test_stops_on_first_violation(bus_and_events) -> None:
+    bus, got = bus_and_events
+    # roll=40 violates every segment; the run must stop after the first, so
+    # fewer than num_segments assessments are published.
+    await run_manoeuvre(bus, _SHORT, StubFmu(roll_deg=40.0), dt=0.05)
+    assert len(got["drone/stability"]) == 1

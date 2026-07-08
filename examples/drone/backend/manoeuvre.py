@@ -70,16 +70,18 @@ def build_segments(params: ManoeuvreParams) -> list[Segment]:
 # ─── Presets ──────────────────────────────────────────────────────────────────
 
 GENTLE_PRESET = ManoeuvreParams(
-    setpoint_step_m=3.0,
-    change_frequency_hz=0.2,
+    setpoint_step_m=1.5,
+    change_frequency_hz=0.5,
     num_segments=4,
 )
-"""Small, slow steps — tilt stays within limits and settles quickly (PASS)."""
+"""Small, slow ramps (0.75 m/s) — tilt stays ~10° and each segment settles
+within the window (PASS). Tuned against the real FMU controller, whose stable
+tracking cliff sits near 1 m/s of setpoint rate."""
 
 AGGRESSIVE_PRESET = ManoeuvreParams(
     setpoint_step_m=12.0,
     change_frequency_hz=1.5,
     num_segments=6,
 )
-"""Large, rapid steps — tilt violation + slow/oscillatory settling (FAIL). This
-is the default so the demo opens in a visibly broken state."""
+"""Large, rapid ramps (18 m/s) — far past the controller's tracking limit, so
+the drone loses control and diverges (FAIL). Default, so the demo opens broken."""

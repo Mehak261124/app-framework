@@ -68,18 +68,26 @@ stable" — all in one tool.**
 
 The scenario ships two command presets:
 
-| Preset         | Setpoint step | Change frequency | Expected outcome                                      |
-| -------------- | ------------- | ---------------- | ----------------------------------------------------- |
-| **Gentle**     | 3 m           | 0.2 Hz (slow)    | Tilt within limits, settles quickly — **PASS**        |
-| **Aggressive** | 12 m          | 1.5 Hz (rapid)   | Tilt violation + slow/oscillatory settling — **FAIL** |
+| Preset         | Step  | Frequency | Rate (step×freq) | Outcome                                    |
+| -------------- | ----- | --------- | ---------------- | ------------------------------------------ |
+| **Gentle**     | 1.5 m | 0.5 Hz    | 0.75 m/s         | Tilt ~10°, each segment settles — **PASS** |
+| **Aggressive** | 12 m  | 1.5 Hz    | 18 m/s           | Setpoint rate ≫ tracking limit → **FAIL**  |
+
+> **Tuned against the real FMU (validated 2026-07-08).** The values above are the
+> _validated_ presets, which differ from the first-draft guesses (Gentle was 3 m
+> / 0.2 Hz). The real controller has a sharp stability cliff: it tracks a ramped
+> setpoint up to ~1 m/s, and beyond that **loses control and diverges** — there
+> is no graceful "tilts to 40° then recovers" regime. So the failure mode is
+> _divergence_ (loss of control), not a mild tilt overshoot. See §4.4.
 
 The **Aggressive** preset is the default so the demo starts in a visibly broken
-state (large tilt, ringing trajectory, FAIL banner). The engineer notices and
-asks the AI: _"This manoeuvre looks unstable — can you read the telemetry and
-tell me what's wrong?"_ The AI reads the snapshot and explains (e.g. "roll peaks
-at 41°, past the 35° limit, and settling time is 7 s — the setpoint steps are too
-large and too frequent for the controller"). The engineer then asks _"suggest
-command settings that fix this"_ and the AI proposes a correction to approve.
+state (tilt runs away, the trajectory diverges, FAIL banner). The engineer
+notices and asks the AI: _"This manoeuvre looks unstable — can you read the
+telemetry and tell me what's wrong?"_ The AI reads the snapshot and explains
+(e.g. "the setpoint rate is 18 m/s, far past the ~1 m/s the controller can track,
+so it can't keep up — tilt runs away and it loses control"). The engineer then
+asks _"suggest command settings that fix this"_ and the AI proposes a correction
+to approve.
 
 **The AI does not self-trigger** — the engineer reaches for it. (Same principle
 as the Reachy example.)
@@ -213,12 +221,12 @@ Outputs read every step (value references confirmed in `modelDescription.xml`;
 the rich attitude/velocity/propeller signals are `causality="None"` **local**
 variables, read directly by value reference via `fmi2GetReal`):
 
-| Variable                                          | VR(s)                  | Mapped telemetry field           |
-| ------------------------------------------------- | ---------------------- | -------------------------------- |
-| `droneChassis1.bodyShape2.body.frame_a.r_0[1..3]` | 33554432/433/434       | `x`, `y`, `z` (m)                |
-| `droneChassis1.bodyShape3.body.phi[1..3]`         | 33554438/439/440       | `roll`, `pitch`, `yaw` (rad→deg) |
-| `droneChassis1.bodyShape3.v_0[1..3]`              | 33554435/436/437       | `vx`, `vy`, `vz` (m/s)           |
-| `propellerRev{,1,2,3}.revolute.w`                 | 33554445/448/451/454   | `prop_w[0..3]` (rad/s)           |
+| Variable                                          | VR(s)                | Mapped telemetry field           |
+| ------------------------------------------------- | -------------------- | -------------------------------- |
+| `droneChassis1.bodyShape2.body.frame_a.r_0[1..3]` | 33554432/433/434     | `x`, `y`, `z` (m)                |
+| `droneChassis1.bodyShape3.body.phi[1..3]`         | 33554438/439/440     | `roll`, `pitch`, `yaw` (rad→deg) |
+| `droneChassis1.bodyShape3.v_0[1..3]`              | 33554435/436/437     | `vx`, `vy`, `vz` (m/s)           |
+| `propellerRev{,1,2,3}.revolute.w`                 | 33554445/448/451/454 | `prop_w[0..3]` (rad/s)           |
 
 (The official `output` variables `xgps`/`ygps`/`zgps` mirror the r_0 position;
 we read `r_0` for consistency with the attitude/velocity locals.) Names are
@@ -255,6 +263,22 @@ class ManoeuvreParams:
 
 (A future version replaces this with an explicit waypoint sequence authored in a
 node editor — §1.4.)
+
+**Runner behaviour, validated against the real FMU (2026-07-08):**
+
+- **Hover warm-up.** The drone starts at rest; commanding a manoeuvre before it
+  settles diverges. The runner holds the origin setpoint for ~1.5 s first (this
+  telemetry is published as `segment = −1` so the take-off shows).
+- **Ramped setpoint.** Each segment ramps the setpoint linearly from the previous
+  target to the new one across its hold time — the controller cannot track an
+  instantaneous step reference (it diverges at _any_ step size). The ramp **rate**
+  = `setpoint_step_m × change_frequency_hz` is the aggression knob; the stability
+  cliff sits near ~1 m/s.
+- **Step size `dt = 0.01 s`.** The co-simulation is numerically unstable at
+  coarser steps (≥ 0.02 s), so `dt` is fixed small.
+- **Stop on first violation.** A violated segment ends the run (mirrors Reachy
+  refusing an unsafe move), and a runaway tilt/position aborts the segment
+  immediately so a diverging run stops promptly.
 
 ---
 

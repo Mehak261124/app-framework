@@ -42,3 +42,4 @@ uv.lock
 
 # Drone example FMU (fetched via examples/drone/backend/fetch_fmu.py, not committed)
 *.fmu
+.venv-drone/

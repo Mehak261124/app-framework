@@ -60,8 +60,11 @@ def test_segment_is_immutable_target_length_three() -> None:
 
 
 def test_gentle_preset_is_slow_and_small() -> None:
-    assert GENTLE_PRESET.setpoint_step_m == pytest.approx(3.0)
-    assert GENTLE_PRESET.change_frequency_hz == pytest.approx(0.2)
+    assert GENTLE_PRESET.setpoint_step_m == pytest.approx(1.5)
+    assert GENTLE_PRESET.change_frequency_hz == pytest.approx(0.5)
+    # Gentle setpoint rate stays under the controller's ~1 m/s stability cliff.
+    rate = GENTLE_PRESET.setpoint_step_m * GENTLE_PRESET.change_frequency_hz
+    assert rate < 1.0
 
 
 def test_aggressive_preset_is_fast_and_large() -> None:

@@ -16,6 +16,7 @@ the start command reports the FMU as unavailable rather than crashing.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -27,7 +28,7 @@ from framework_core.ai_layout import mount_ai_routes
 
 from .consumers import register_consumers
 from .events import DroneLogEvent, DroneStateEvent
-from .fmpy_model import load_fmu
+from .fmpy_model import load_fmu, prewarm
 from .manoeuvre import AGGRESSIVE_PRESET
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     params = replace(AGGRESSIVE_PRESET)
     register_consumers(app.state.bus, params, load_fmu)
+
+    # Build the FMU binary now (once, off the event loop) so the first run
+    # doesn't freeze the app while compiling. Safe to thread: this only
+    # extracts/compiles — it never touches an FMU instance.
+    await asyncio.to_thread(prewarm)
 
     await app.state.bus.publish(
         "drone/state",

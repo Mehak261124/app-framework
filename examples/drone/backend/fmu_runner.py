@@ -48,6 +48,21 @@ VR_VELOCITY: list[int] = [33554435, 33554436, 33554437]
 VR_PROP: list[int] = [33554445, 33554448, 33554451, 33554454]
 """The four propeller angular speeds ``revolute.w`` (rad/s)."""
 
+HOVER_WARMUP_S: float = 1.5
+"""Seconds to hold the origin setpoint before the manoeuvre, so the drone
+settles into stable hover first. Commanding a manoeuvre before it has settled
+makes the position controller diverge."""
+
+DEFAULT_DT: float = 0.01
+"""Communication step size (seconds). The FMU's controller goes numerically
+unstable at coarser steps (≥ 0.02 s), so this must stay small."""
+
+RUNAWAY_TILT_DEG: float = 90.0
+"""Tilt beyond which the drone is unrecoverable — the segment aborts at once."""
+
+RUNAWAY_POS_M: float = 100.0
+"""Tracked-axis distance beyond which the run has clearly diverged — abort."""
+
 
 class Fmu(Protocol):
     """The subset of FMPy's ``FMU2Slave`` co-simulation API the runner needs."""
@@ -107,7 +122,7 @@ async def run_manoeuvre(
     params: ManoeuvreParams,
     fmu: Fmu,
     *,
-    dt: float = 0.02,
+    dt: float = DEFAULT_DT,
 ) -> None:
     """Run a full manoeuvre on the FMU, publishing to the ``drone/*`` channels.
 
@@ -144,13 +159,37 @@ async def run_manoeuvre(
     start_x = 0.0
 
     try:
+        # Hover warm-up: hold the origin setpoint until the drone settles into
+        # stable hover. Telemetry is published (segment −1) so the take-off is
+        # visible, but no segment is assessed during it.
+        fmu.setReal(VR_TARGET, [0.0, 0.0, 0.0])
+        warmup_steps = int(HOVER_WARMUP_S / dt)
+        for _ in range(warmup_steps):
+            # Call the FMU directly (never via a thread): FMUs are not
+            # thread-safe, and a threaded doStep cannot be cancelled — it would
+            # race the terminate() on the next Start and crash the process.
+            fmu.doStep(t, dt)
+            t += dt
+            await bus.publish(
+                "drone/telemetry", read_telemetry(fmu, -1, t, (0.0, 0.0, 0.0))
+            )
+            await _pace(dt)
+
         for seg in segments:
-            fmu.setReal(VR_TARGET, list(seg.target))
             seg_samples: list[SegmentSample] = []
             seg_start_t = t
+            seg_start_x = start_x
 
             while t - seg_start_t < seg.hold_time_s:
-                await asyncio.to_thread(fmu.doStep, t, dt)
+                # Ramp the setpoint linearly across the segment: the position
+                # controller tracks a moving reference, and an instantaneous
+                # step reference makes it diverge. The ramp *rate*
+                # (step / hold_time = setpoint_step_m × change_frequency_hz) is
+                # exactly what makes the aggressive preset unstable.
+                progress = min(1.0, (t - seg_start_t + dt) / seg.hold_time_s)
+                ramped_x = seg_start_x + (seg.target[0] - seg_start_x) * progress
+                fmu.setReal(VR_TARGET, [ramped_x, seg.target[1], seg.target[2]])
+                fmu.doStep(t, dt)
                 t += dt
                 tel = read_telemetry(fmu, seg.index, t, seg.target)
                 await bus.publish("drone/telemetry", tel)
@@ -163,6 +202,15 @@ async def run_manoeuvre(
                     )
                 )
                 await _pace(dt)
+
+                # Abort the segment the instant the drone is clearly out of
+                # control, so a diverging run stops promptly instead of running
+                # the tilt up to absurd values before the assessment sees it.
+                if (
+                    max(abs(tel.attitude[0]), abs(tel.attitude[1])) > RUNAWAY_TILT_DEG
+                    or abs(tel.position[0]) > RUNAWAY_POS_M
+                ):
+                    break
 
             assessment = assess_segment(
                 seg.index, seg_samples, start_x=start_x, target_x=seg.target[0]
@@ -183,7 +231,11 @@ async def run_manoeuvre(
                     ),
                 )
             if assessment.status == "violation":
+                # First violation ends the run — the manoeuvre is unsafe, so
+                # there is no point flying the remaining segments (mirrors the
+                # Reachy validator, which refuses the move on a violation).
                 any_violation = True
+                break
 
             start_x = seg.target[0]
 
