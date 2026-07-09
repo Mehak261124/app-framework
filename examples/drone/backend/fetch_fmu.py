@@ -18,7 +18,7 @@ from pathlib import Path
 
 FMU_URL = (
     "https://raw.githubusercontent.com/ALSETLab/Modelica-Drone-3D-FMI/"
-    "main/B_FMI/Drone.fmu"
+    "master/B_FMI/Drone.fmu"
 )
 """Raw GitHub URL of the reference ``Drone.fmu`` (FMI 2.0 co-simulation)."""
 

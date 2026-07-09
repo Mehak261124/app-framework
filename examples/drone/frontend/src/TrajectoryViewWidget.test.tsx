@@ -63,10 +63,10 @@ describe("TrajectoryView widget", () => {
     expect(TRAJECTORY_VIEW.defaultRegion).toBe("sidebar-left");
   });
 
-  it("defaults to the top-down North × East projection", async () => {
+  it("defaults to the Top view (North × East, looking down)", async () => {
     await renderWidget();
     await expect
-      .element(page.getByRole("img", { name: /flight trajectory \(North × East\)/i }))
+      .element(page.getByRole("img", { name: /Top view.*North × East/i }))
       .toBeInTheDocument();
   });
 
@@ -79,13 +79,11 @@ describe("TrajectoryView widget", () => {
     await expect.element(page.getByText(/1 samples/)).toBeInTheDocument();
   });
 
-  it("projects onto the configured plane (xz side view uses altitude)", async () => {
+  it("projects onto the configured plane (xz front view uses altitude)", async () => {
     const { socket } = await renderWidget("xz");
 
     await expect
-      .element(
-        page.getByRole("img", { name: /flight trajectory \(North × Altitude\)/i }),
-      )
+      .element(page.getByRole("img", { name: /Front view.*North × Altitude/i }))
       .toBeInTheDocument();
 
     act(() => socket.deliver("drone/telemetry", SAMPLE));

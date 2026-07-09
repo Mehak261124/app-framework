@@ -25,6 +25,19 @@ const AXIS_META: Record<string, AxisMeta> = {
   z: { index: 2, label: "Altitude", short: "Alt" },
 };
 
+/**
+ * Human-readable orthographic view name + camera hint per plane, so it is
+ * obvious which viewpoint each projection is (rather than an axis pair):
+ * - `xy` is the **top** view (camera looking straight down — altitude hidden).
+ * - `xz` / `yz` are horizontal **elevation** views where the vertical axis is
+ *   real altitude, seen from the side.
+ */
+const PLANE_META: Record<TrajectoryPlane, { view: string; hint: string }> = {
+  xy: { view: "Top view", hint: "looking down" },
+  xz: { view: "Front view", hint: "from the side" },
+  yz: { view: "Side view", hint: "from the side" },
+};
+
 /** A single 2D point in the projected (horizontal, vertical) plane. */
 interface Point {
   /** Horizontal-axis value (metres). */
@@ -59,8 +72,12 @@ function makeProjector(
   });
 }
 
-/** Draw a small quadcopter glyph at (cx, cy), rotated to face `heading` (rad). */
-function drawDrone(
+/**
+ * Draw the **top-down** quadcopter glyph (X-frame, four rotor discs) at
+ * (cx, cy), rotated to face `heading` (rad). Used only in the Top view, where
+ * you really are looking down on all four propellers.
+ */
+function drawDroneTop(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -109,7 +126,73 @@ function drawDrone(
   ctx.restore();
 }
 
-function draw(canvas: HTMLCanvasElement, points: Point[], target: Point | null): void {
+/**
+ * Draw the drone **edge-on** (a side/front elevation) at (cx, cy): a horizontal
+ * arm with two rotors seen from the side (thin discs on short motor stalks) and
+ * a body — because from the front or side you do *not* see all four propellers
+ * from above. `dir` (-1 / 0 / +1) points a short amber nose along horizontal
+ * travel. Rotors point up so higher altitude reads as higher on screen. `tilt`
+ * (radians) leans the whole airframe by the drone's real roll/pitch, so it
+ * banks into its accelerations.
+ */
+function drawDroneSide(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  dir: number,
+  tilt: number,
+): void {
+  const arm = 9;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(tilt);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#1d4ed8";
+
+  // Horizontal arm.
+  ctx.beginPath();
+  ctx.moveTo(-arm, 0);
+  ctx.lineTo(arm, 0);
+  ctx.stroke();
+
+  // A motor stalk + edge-on rotor disc at each end (rotors up).
+  for (const ex of [-arm, arm]) {
+    ctx.strokeStyle = "#1d4ed8";
+    ctx.beginPath();
+    ctx.moveTo(ex, 0);
+    ctx.lineTo(ex, -5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(ex, -5, 5, 1.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(37,99,235,0.4)";
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Body hub.
+  ctx.fillStyle = "#1d4ed8";
+  ctx.beginPath();
+  ctx.ellipse(0, 1, 4, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Direction-of-travel nose.
+  if (dir !== 0) {
+    ctx.strokeStyle = "#f59e0b";
+    ctx.beginPath();
+    ctx.moveTo(0, 1);
+    ctx.lineTo(dir * (arm + 3), 1);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function draw(
+  canvas: HTMLCanvasElement,
+  points: Point[],
+  target: Point | null,
+  topDown: boolean,
+  tilt: number,
+): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const { width, height } = canvas;
@@ -149,17 +232,18 @@ function draw(canvas: HTMLCanvasElement, points: Point[], target: Point | null):
     ctx.strokeRect(t.x - 5, t.y - 5, 10, 10);
   }
 
-  // Current position: a small drone glyph pointed along its direction of travel.
+  // Current position: a drone glyph drawn for THIS viewpoint — top-down (all
+  // four rotors) in the Top view, edge-on (side profile) in the elevations.
   if (points.length > 0) {
     const p = project(points[points.length - 1]);
-    let heading = 0;
-    if (points.length > 1) {
-      const prev = project(points[points.length - 2]);
-      if (p.x !== prev.x || p.y !== prev.y) {
-        heading = Math.atan2(p.y - prev.y, p.x - prev.x);
-      }
+    const prev = points.length > 1 ? project(points[points.length - 2]) : p;
+    if (topDown) {
+      const heading =
+        p.x !== prev.x || p.y !== prev.y ? Math.atan2(p.y - prev.y, p.x - prev.x) : 0;
+      drawDroneTop(ctx, p.x, p.y, heading);
+    } else {
+      drawDroneSide(ctx, p.x, p.y, Math.sign(p.x - prev.x), tilt);
     }
-    drawDrone(ctx, p.x, p.y, heading);
   }
 }
 
@@ -189,6 +273,7 @@ function TrajectoryViewComponent({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [trail, setTrail] = useState<Point[]>([]);
   const [target, setTarget] = useState<Point | null>(null);
+  const [tilt, setTilt] = useState(0);
 
   const hAxis = AXIS_META[plane[0]];
   const vAxis = AXIS_META[plane[1]];
@@ -211,25 +296,38 @@ function TrajectoryViewComponent({
       if (Array.isArray(t.target)) {
         setTarget({ h: t.target[hAxis.index], v: t.target[vAxis.index] });
       }
+      if (Array.isArray(t.attitude)) {
+        // Lean the side profile by the tilt visible in this elevation: pitch in
+        // the Front view (xz), roll in the Side view (yz). Clamp so a diverging
+        // run's runaway attitude doesn't whirl the glyph.
+        const deg = plane === "xz" ? t.attitude[1] : plane === "yz" ? t.attitude[0] : 0;
+        const clamped = Math.max(-75, Math.min(75, deg));
+        setTilt((clamped * Math.PI) / 180);
+      }
     });
-  }, [client, hAxis.index, vAxis.index]);
+  }, [client, hAxis.index, vAxis.index, plane]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) draw(canvas, trail, target);
-  }, [trail, target]);
+    if (canvas) draw(canvas, trail, target, plane === "xy", tilt);
+  }, [trail, target, plane, tilt]);
 
   const here = trail[trail.length - 1];
-  const planeLabel = `${hAxis.label} × ${vAxis.label}`;
+  const { view, hint } = PLANE_META[plane];
+  const axisLabel = `${hAxis.label} × ${vAxis.label}`;
 
   return (
     <figure
       className="drone-trajectory"
       role="img"
-      aria-label={`Flight trajectory (${planeLabel})`}
+      aria-label={`Flight trajectory — ${view} (${hint}, ${axisLabel})`}
     >
       <figcaption className="drone-trajectory-caption">
-        <span className="drone-trajectory-title">{planeLabel}</span>
+        <span className="drone-trajectory-title">{view}</span>
+        <span className="drone-trajectory-axes">
+          {" "}
+          {hint} · {axisLabel}
+        </span>
         {here
           ? ` · ${hAxis.short} ${here.h.toFixed(1)} m, ${vAxis.short} ${here.v.toFixed(1)} m · ${trail.length} samples`
           : " · start a run to plot the flight path."}

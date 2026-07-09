@@ -705,6 +705,10 @@ body {
   color: var(--foreground);
 }
 
+.drone-trajectory-axes {
+  color: var(--muted-foreground);
+}
+
 .drone-trajectory-canvas {
   width: 100%;
   height: auto;
