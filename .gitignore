@@ -39,3 +39,4 @@ examples/**/.env
 uv.lock
 **/.vitest-attachments/
 **/__screenshots__/
+.venv-drone/
