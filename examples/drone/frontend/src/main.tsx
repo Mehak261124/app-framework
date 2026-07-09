@@ -109,7 +109,27 @@ const initialLayout: ShellLayout = {
     "sidebar-left": {
       visible: true,
       items: [
-        { id: "trajectory-view", type: "TrajectoryView", props: {}, order: 0 },
+        // Three orthogonal projections — top-down (North × East) plus two side
+        // views (North × Altitude, East × Altitude) — so horizontal drift and
+        // altitude are all visible and the sidebar space is filled.
+        {
+          id: "trajectory-top",
+          type: "TrajectoryView",
+          props: { plane: "xy" },
+          order: 0,
+        },
+        {
+          id: "trajectory-side-x",
+          type: "TrajectoryView",
+          props: { plane: "xz" },
+          order: 1,
+        },
+        {
+          id: "trajectory-side-y",
+          type: "TrajectoryView",
+          props: { plane: "yz" },
+          order: 2,
+        },
         {
           id: "manoeuvre-params",
           type: "ParameterController",
@@ -118,7 +138,7 @@ const initialLayout: ShellLayout = {
             debounceMs: 300,
             parameters: DRONE_PARAMETERS,
           },
-          order: 1,
+          order: 3,
         },
       ],
     },

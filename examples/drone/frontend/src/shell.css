@@ -700,6 +700,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.drone-trajectory-title {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
 .drone-trajectory-canvas {
   width: 100%;
   height: auto;

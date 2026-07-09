@@ -32,18 +32,30 @@ class FakeWebSocket implements WebSocketLike {
   }
 }
 
-const TrajectoryView = TRAJECTORY_VIEW.factory({ parameters: {} }) as ComponentType;
+const TrajectoryView = TRAJECTORY_VIEW.factory({
+  parameters: {},
+}) as ComponentType<{ plane?: "xy" | "xz" | "yz" }>;
 
-async function renderWidget() {
+async function renderWidget(plane?: "xy" | "xz" | "yz") {
   const socket = new FakeWebSocket();
   await render(
     <EventBusProvider path="/ws" webSocketFactory={() => socket}>
-      <TrajectoryView />
+      <TrajectoryView plane={plane} />
     </EventBusProvider>,
   );
   act(() => socket.open());
   return { socket };
 }
+
+const SAMPLE = {
+  t: 0.1,
+  segment: 0,
+  position: [4.5, -1.0, 2.0],
+  attitude: [0, 0, 0],
+  velocity: [0, 0, 0],
+  prop_w: [0, 0, 0, 0],
+  target: [12, 0, 0],
+};
 
 describe("TrajectoryView widget", () => {
   it("is registered for the sidebar", () => {
@@ -51,29 +63,34 @@ describe("TrajectoryView widget", () => {
     expect(TRAJECTORY_VIEW.defaultRegion).toBe("sidebar-left");
   });
 
-  it("exposes an accessible trajectory image", async () => {
+  it("defaults to the top-down North × East projection", async () => {
     await renderWidget();
     await expect
-      .element(page.getByRole("img", { name: /top-down flight trajectory/i }))
+      .element(page.getByRole("img", { name: /flight trajectory \(North × East\)/i }))
       .toBeInTheDocument();
   });
 
   it("updates the caption from telemetry samples", async () => {
     const { socket } = await renderWidget();
 
-    act(() =>
-      socket.deliver("drone/telemetry", {
-        t: 0.1,
-        segment: 0,
-        position: [4.5, -1.0, 0.0],
-        attitude: [0, 0, 0],
-        velocity: [0, 0, 0],
-        prop_w: [0, 0, 0, 0],
-        target: [12, 0, 0],
-      }),
-    );
+    act(() => socket.deliver("drone/telemetry", SAMPLE));
 
     await expect.element(page.getByText(/N 4\.5 m, E -1\.0 m/)).toBeInTheDocument();
     await expect.element(page.getByText(/1 samples/)).toBeInTheDocument();
+  });
+
+  it("projects onto the configured plane (xz side view uses altitude)", async () => {
+    const { socket } = await renderWidget("xz");
+
+    await expect
+      .element(
+        page.getByRole("img", { name: /flight trajectory \(North × Altitude\)/i }),
+      )
+      .toBeInTheDocument();
+
+    act(() => socket.deliver("drone/telemetry", SAMPLE));
+
+    // xz projects North (position[0]=4.5) × Altitude (position[2]=2.0).
+    await expect.element(page.getByText(/N 4\.5 m, Alt 2\.0 m/)).toBeInTheDocument();
   });
 });
