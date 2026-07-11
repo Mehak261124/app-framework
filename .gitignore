@@ -39,4 +39,7 @@ examples/**/.env
 uv.lock
 **/.vitest-attachments/
 **/__screenshots__/
+
+# Drone example FMU (fetched via examples/drone/backend/fetch_fmu.py, not committed)
+*.fmu
 .venv-drone/
