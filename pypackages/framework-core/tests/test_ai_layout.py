@@ -249,6 +249,55 @@ def test_build_layout_prompt_context_section_is_domain_agnostic() -> None:
     assert "safety" not in template
 
 
+def test_build_layout_prompt_attaches_screenshot_as_multimodal_message() -> None:
+    """A screenshot turns the final user message into a text + image_url list."""
+    data_url = "data:image/png;base64,iVBORw0KGgoAAAANS"
+    messages = build_layout_prompt(
+        user_message="What's wrong with this run?",
+        widget_catalog=[{"name": "Chart", "description": "A chart."}],
+        layout_schema=SHELL_LAYOUT_JSON_SCHEMA,
+        screenshot=data_url,
+    )
+    user_msg = messages[-1]
+    assert user_msg["role"] == "user"
+    assert isinstance(user_msg["content"], list)
+    parts = {p["type"]: p for p in user_msg["content"]}
+    assert set(parts) == {"text", "image_url"}
+    assert parts["image_url"]["image_url"]["url"] == data_url
+    assert "What's wrong" in parts["text"]["text"]
+
+
+def test_build_layout_prompt_without_screenshot_keeps_string_content() -> None:
+    """Without a screenshot the user message stays a plain string (unchanged)."""
+    messages = build_layout_prompt(
+        user_message="Add a chart",
+        widget_catalog=[{"name": "Chart", "description": "c"}],
+        layout_schema=SHELL_LAYOUT_JSON_SCHEMA,
+    )
+    assert messages[-1]["content"] == "Add a chart"
+
+
+def test_screenshot_adds_guidance_to_system_prompt() -> None:
+    """A screenshot adds system guidance telling the model to reason over it."""
+    messages = build_layout_prompt(
+        user_message="what's happening?",
+        widget_catalog=[{"name": "Chart", "description": "c"}],
+        layout_schema=SHELL_LAYOUT_JSON_SCHEMA,
+        screenshot="data:image/png;base64,AAAA",
+    )
+    assert "screenshot" in messages[0]["content"].lower()
+
+
+def test_no_screenshot_guidance_without_screenshot() -> None:
+    """Layout-only requests get no screenshot guidance in the system prompt."""
+    messages = build_layout_prompt(
+        user_message="Add a chart",
+        widget_catalog=[{"name": "Chart", "description": "c"}],
+        layout_schema=SHELL_LAYOUT_JSON_SCHEMA,
+    )
+    assert "screenshot" not in messages[0]["content"].lower()
+
+
 def test_build_layout_prompt_includes_app_instructions() -> None:
     """App context_instructions appear in the prompt and trigger the section."""
     catalog = [{"name": "Chart", "description": "A chart."}]

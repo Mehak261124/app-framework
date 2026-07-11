@@ -215,3 +215,90 @@
   height: 36px;
   border-radius: 8px;
 }
+
+/* Thumbnail of the dashboard screenshot attached to a user message. */
+.sct-AIChatPanel-screenshot {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+/* Note shown when a dashboard view capture was attempted but failed. */
+.sct-AIChatPanel-capture-note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+/* Confirmation flash shown after approving AI-suggested parameters: a blurred
+   backdrop over the panel with a centered card, auto-dismissed after ~2.5s. */
+.sct-AIChatPanel-toast-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  /* Blur what's behind the popup so the confirmation stands out. */
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  background: color-mix(in srgb, var(--card, #fff) 45%, transparent);
+  /* Purely a visual flash — never traps clicks (Start lives outside the panel). */
+  pointer-events: none;
+  animation: sct-toast-fade 0.18s ease-out;
+}
+
+.sct-AIChatPanel-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 92%;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: var(--primary, #001e32);
+  color: var(--primary-foreground, #fff);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: sct-toast-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.sct-AIChatPanel-toast-check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--chart-2, #10b981);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@keyframes sct-toast-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sct-toast-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

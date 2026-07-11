@@ -7,6 +7,12 @@ import { AIChatPanel } from "./AIChatPanel";
 import { WidgetRegistry } from "../widgetRegistry";
 import type { ShellLayout } from "../shellTypes";
 
+// Mock the DOM-to-image capture so tests never rasterise a real element.
+vi.mock("../captureView", () => ({
+  captureView: vi.fn(async () => "data:image/png;base64,SHOT"),
+}));
+import { captureView } from "../captureView";
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const BASE_LAYOUT: ShellLayout = {
@@ -375,6 +381,72 @@ describe("AIChatPanel", () => {
     expect(body.context_instructions).toBeUndefined();
   });
 
+  it("captures the view and attaches a screenshot when a capture target exists", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+
+    await render(
+      <AIChatPanel {...defaultProps({ getCaptureTarget: () => document.body })} />,
+    );
+    await fillAndSend("what's wrong with this run?");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBe("data:image/png;base64,SHOT");
+
+    // The captured view is shown back as a thumbnail in the user's message.
+    await expect
+      .element(page.getByRole("img", { name: /dashboard view/i }))
+      .toBeInTheDocument();
+  });
+
+  it("shows a note and sends no screenshot when the capture fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+    vi.mocked(captureView).mockRejectedValueOnce(new Error("capture boom"));
+
+    await render(
+      <AIChatPanel {...defaultProps({ getCaptureTarget: () => document.body })} />,
+    );
+    await fillAndSend("look at this");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBeUndefined();
+    await expect
+      .element(page.getByText(/couldn't capture the view/i))
+      .toBeInTheDocument();
+  });
+
+  it("attaches no screenshot when the capture target is absent", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+
+    await render(<AIChatPanel {...defaultProps()} />);
+    await fillAndSend("Add a chart");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBeUndefined();
+  });
+
+  it("does not render the param Approve/Reject UI when suggested_params is empty", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          layout: {},
+          explanation: "just looking",
+          suggested_params: {},
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await render(<AIChatPanel {...defaultProps({ onApproveParams: vi.fn() })} />);
+    await fillAndSend("what's happening?");
+
+    await expect.element(page.getByText("just looking")).toBeInTheDocument();
+    // The empty params object must not produce a diff with dummy buttons.
+    expect(page.getByRole("button", { name: "Approve" }).query()).toBeNull();
+  });
+
   it("forwards the snapshot's context and instructions to every request", async () => {
     vi.mocked(fetch).mockResolvedValue(makeDiagnosisResponse());
     const getSnapshot = vi.fn(() => ({
@@ -404,7 +476,7 @@ describe("AIChatPanel", () => {
     await render(<AIChatPanel {...defaultProps()} />);
 
     expect(
-      page.getByRole("checkbox", { name: "Include app context" }).query(),
+      page.getByRole("checkbox", { name: "Include current view" }).query(),
     ).toBeNull();
   });
 
@@ -414,7 +486,7 @@ describe("AIChatPanel", () => {
 
     await render(<AIChatPanel {...defaultProps({ getSnapshot })} />);
 
-    const toggle = page.getByRole("checkbox", { name: "Include app context" });
+    const toggle = page.getByRole("checkbox", { name: "Include current view" });
     await expect.element(toggle).toBeChecked();
     (toggle.element() as HTMLInputElement).click(); // uncheck
 
@@ -470,7 +542,9 @@ describe("AIChatPanel", () => {
     domClick("Approve");
 
     expect(onApproveParams).toHaveBeenCalledWith(SUGGESTED_PARAMS);
-    await expect.element(page.getByText("Parameters applied.")).toBeInTheDocument();
+    await expect
+      .element(page.getByText(/Parameters applied.*run again/i))
+      .toBeInTheDocument();
   });
 
   it("does not call onApproveParams when Reject is clicked", async () => {
