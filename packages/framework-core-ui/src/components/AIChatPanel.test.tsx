@@ -6,12 +6,14 @@ import type React from "react";
 import { AIChatPanel } from "./AIChatPanel";
 import { WidgetRegistry } from "../widgetRegistry";
 import type { ShellLayout } from "../shellTypes";
+import { captureView } from "../captureView";
 
 // Mock the DOM-to-image capture so tests never rasterise a real element.
+// vi.mock is hoisted above every import in this file, so `captureView`
+// resolves to this mock everywhere (here and inside AIChatPanel).
 vi.mock("../captureView", () => ({
   captureView: vi.fn(async () => "data:image/png;base64,SHOT"),
 }));
-import { captureView } from "../captureView";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
