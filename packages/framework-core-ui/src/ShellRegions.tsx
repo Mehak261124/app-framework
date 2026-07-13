@@ -5,6 +5,7 @@ import { mergeClassNames } from "./helpers";
 
 import type { RegionItem, RegionSetter, RegionState } from "./shellTypes";
 import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
+import { LayoutProfilesMenu } from "./components/LayoutProfilesMenu";
 
 // ─── RegionItemRenderer ───────────────────────────────────────────────────────
 
@@ -95,6 +96,7 @@ export function ShellHeader({
       className={mergeClassNames("sct-ShellHeader", className)}
       data-testid="shell-header"
     >
+      <LayoutProfilesMenu />
       {sorted.map((item) => (
         <RegionItemRenderer key={item.id} item={item} />
       ))}

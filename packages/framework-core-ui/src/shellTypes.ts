@@ -27,11 +27,45 @@ export interface RegionState {
   visible: boolean;
   /** Ordered list of widget placements in this region. */
   items: RegionItem[];
+  /**
+   * Optional persisted panel size as a percentage of its resizable group,
+   * captured when the user drags the region's resize handle (applies to the
+   * collapsible `sidebar-left`, `sidebar-right`, and `bottom` regions). Lets a
+   * saved layout profile restore not just which regions are visible but how
+   * wide/tall they were. Omitted until the region is resized, in which case the
+   * shell's default size is used.
+   */
+  size?: number;
 }
 
 /** Serializable snapshot of the full shell layout. */
 export interface ShellLayout {
   regions: Record<RegionId, RegionState>;
+}
+
+/**
+ * One named, saved dashboard arrangement.
+ *
+ * A profile pairs a user-facing {@link LayoutProfile.name} with a serializable
+ * {@link ShellLayout}. The shell keeps a collection of these and renders the
+ * one whose {@link LayoutProfile.id} matches the store's active profile id,
+ * letting an engineer flip between e.g. a "Tuning" and a "Monitoring"
+ * dashboard.
+ */
+export interface LayoutProfile {
+  /** Stable unique id (e.g. `crypto.randomUUID()`); survives saves/reloads. */
+  id: string;
+  /** User-facing label, e.g. `"Monitoring"`. Never blank. */
+  name: string;
+  /** The serializable dashboard arrangement rendered when this profile is active. */
+  layout: ShellLayout;
+  /**
+   * Captured per-widget state, keyed by the string passed to `useProfileState`
+   * (e.g. slider values, scroll positions, selections). Frozen on save and
+   * replayed on load alongside {@link LayoutProfile.layout}. Present only when
+   * widgets have opted in; omitted for layout-only profiles.
+   */
+  state?: Record<string, unknown>;
 }
 
 /** Context value provided by ApplicationShell. */
@@ -84,9 +118,13 @@ export function createDefaultShellLayout(): ShellLayout {
 }
 
 /**
- * Increment this when ShellLayout schema changes in a breaking way. Bumping it
- * discards stale persisted layouts (any older version is migrated to the
- * default), so apps that moved widgets between regions don't get a leftover
- * layout from a previous build.
+ * Increment this when the persisted store schema changes in a breaking way.
+ * Bumping it runs the store's `migrate` (older versions are converted or reset
+ * to the default), so apps don't get a leftover layout from a previous build.
+ *
+ * Version 7 introduced multiple named {@link LayoutProfile}s: a legacy
+ * `{ layout }` state is folded into a single "Default" profile on upgrade.
+ * Version 8 switched to freeze-on-save snapshots (working layout kept separate
+ * from saved profiles); any older persisted profiles are discarded on upgrade.
  */
-export const SHELL_LAYOUT_STORAGE_VERSION = 6;
+export const SHELL_LAYOUT_STORAGE_VERSION = 8;

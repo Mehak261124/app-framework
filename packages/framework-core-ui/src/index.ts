@@ -68,12 +68,23 @@ export {
 } from "./components/AIChatPanel";
 export {
   useShellLayoutStore,
+  useActiveLayout,
+  selectActiveLayout,
   clearPersistedLayout,
   type ShellLayoutStore,
 } from "./stores/shellStore";
+export { LayoutProfilesMenu } from "./components/LayoutProfilesMenu";
+export { useProfileState } from "./useProfileState";
+export {
+  registerProfileState,
+  snapshotProfileState,
+  applyProfileState,
+  type ProfileStateEntry,
+} from "./profileStateRegistry";
 export {
   createDefaultShellLayout,
   SHELL_LAYOUT_STORAGE_VERSION,
+  type LayoutProfile,
   type RegionId,
   type RegionItem,
   type RegionSetter,
