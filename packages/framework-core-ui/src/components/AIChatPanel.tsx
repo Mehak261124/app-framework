@@ -102,9 +102,11 @@ export interface AIChatPanelProps {
   onApproveParams?: (params: Record<string, unknown>) => void;
   /**
    * Returns the DOM element to screenshot for the AI (the dashboard's main
-   * content). Provided by {@link ApplicationShell}. When present, sending a
-   * message with the "Include current view" toggle on captures this element
-   * and attaches it so a vision model can reason over what the user sees.
+   * content). Provided by {@link ApplicationShell}. When present, an "App view"
+   * checkbox appears; sending a message with it on captures this element and
+   * attaches it so a vision model can reason over what the user sees. The
+   * separate "Data context" checkbox (shown when {@link AIChatPanelProps.getSnapshot}
+   * is provided) independently controls the structured context.
    */
   getCaptureTarget?: () => HTMLElement | null;
 }
@@ -297,9 +299,11 @@ export function AIChatPanel({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // When the app provides a snapshot, the user can choose per-conversation
-  // whether to include that context with their messages (default: on).
-  const [includeContext, setIncludeContext] = useState(true);
+  // The user can independently pick which extras ride along with a message:
+  // the app's structured data context (from getSnapshot) and/or a screenshot of
+  // the current app view (from getCaptureTarget). Both default on when available.
+  const [includeData, setIncludeData] = useState(true);
+  const [includeView, setIncludeView] = useState(true);
   // Transient popup shown after approving AI-suggested parameters, prompting the
   // user to re-run so the change takes effect.
   const [toast, setToast] = useState<string | null>(null);
@@ -320,12 +324,12 @@ export function AIChatPanel({
     setInput("");
     setError(null);
 
-    // Capture the current dashboard view (best-effort) when the toggle is on,
+    // Capture the current dashboard view (best-effort) when "App view" is on,
     // so the AI can reason over what the user sees. A failed capture falls back
     // to text/context only.
     let screenshot: string | undefined;
     let captureFailed = false;
-    if (includeContext && getCaptureTarget) {
+    if (includeView && getCaptureTarget) {
       const target = getCaptureTarget();
       if (target) {
         try {
@@ -346,7 +350,7 @@ export function AIChatPanel({
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
-    const snapshot = includeContext ? getSnapshot?.() : undefined;
+    const snapshot = includeData ? getSnapshot?.() : undefined;
 
     try {
       const response = await fetch(apiUrl, {
@@ -533,15 +537,37 @@ export function AIChatPanel({
 
         <div className="sct-AIChatPanel-input-area">
           {(getSnapshot || getCaptureTarget) && (
-            <label className="sct-AIChatPanel-context-toggle">
-              <input
-                type="checkbox"
-                checked={includeContext}
-                onChange={(e) => setIncludeContext(e.target.checked)}
-                aria-label="Include current view"
-              />
-              Include current view
-            </label>
+            <div
+              className="sct-AIChatPanel-context-toggles"
+              role="group"
+              aria-label="Data to send with your message"
+            >
+              <span className="sct-AIChatPanel-context-toggles-label">
+                Send with message:
+              </span>
+              {getSnapshot && (
+                <label className="sct-AIChatPanel-context-toggle">
+                  <input
+                    type="checkbox"
+                    checked={includeData}
+                    onChange={(e) => setIncludeData(e.target.checked)}
+                    aria-label="Data context"
+                  />
+                  Data context
+                </label>
+              )}
+              {getCaptureTarget && (
+                <label className="sct-AIChatPanel-context-toggle">
+                  <input
+                    type="checkbox"
+                    checked={includeView}
+                    onChange={(e) => setIncludeView(e.target.checked)}
+                    aria-label="App view"
+                  />
+                  App view
+                </label>
+              )}
+            </div>
           )}
           <div className="sct-AIChatPanel-input-row">
             <Textarea

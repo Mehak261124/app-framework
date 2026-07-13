@@ -474,21 +474,40 @@ describe("AIChatPanel", () => {
     expect(body.currentParams).toBeUndefined();
   });
 
-  it("hides the include-context toggle when getSnapshot is not provided", async () => {
+  it("shows neither toggle when getSnapshot and getCaptureTarget are absent", async () => {
     await render(<AIChatPanel {...defaultProps()} />);
 
-    expect(
-      page.getByRole("checkbox", { name: "Include current view" }).query(),
-    ).toBeNull();
+    expect(page.getByRole("checkbox", { name: "Data context" }).query()).toBeNull();
+    expect(page.getByRole("checkbox", { name: "App view" }).query()).toBeNull();
   });
 
-  it("omits context when the include-context toggle is unchecked", async () => {
+  it("shows only the Data context toggle when only getSnapshot is provided", async () => {
+    await render(<AIChatPanel {...defaultProps({ getSnapshot: vi.fn(() => ({})) })} />);
+
+    await expect
+      .element(page.getByRole("checkbox", { name: "Data context" }))
+      .toBeInTheDocument();
+    expect(page.getByRole("checkbox", { name: "App view" }).query()).toBeNull();
+  });
+
+  it("shows only the App view toggle when only getCaptureTarget is provided", async () => {
+    await render(
+      <AIChatPanel {...defaultProps({ getCaptureTarget: () => document.body })} />,
+    );
+
+    await expect
+      .element(page.getByRole("checkbox", { name: "App view" }))
+      .toBeInTheDocument();
+    expect(page.getByRole("checkbox", { name: "Data context" }).query()).toBeNull();
+  });
+
+  it("omits context when the Data context toggle is unchecked", async () => {
     vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
     const getSnapshot = vi.fn(() => ({ context: { a: 1 }, instructions: "x" }));
 
     await render(<AIChatPanel {...defaultProps({ getSnapshot })} />);
 
-    const toggle = page.getByRole("checkbox", { name: "Include current view" });
+    const toggle = page.getByRole("checkbox", { name: "Data context" });
     await expect.element(toggle).toBeChecked();
     (toggle.element() as HTMLInputElement).click(); // uncheck
 
@@ -499,6 +518,54 @@ describe("AIChatPanel", () => {
     expect(body.context).toBeUndefined();
     expect(body.context_instructions).toBeUndefined();
     expect(getSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("sends the screenshot but omits context when only App view is checked", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+    const getSnapshot = vi.fn(() => ({ context: { a: 1 }, instructions: "x" }));
+
+    await render(
+      <AIChatPanel
+        {...defaultProps({ getSnapshot, getCaptureTarget: () => document.body })}
+      />,
+    );
+
+    // Turn off Data context, leave App view on.
+    (
+      page.getByRole("checkbox", { name: "Data context" }).element() as HTMLInputElement
+    ).click();
+
+    await fillAndSend("look at this");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBe("data:image/png;base64,SHOT");
+    expect(body.context).toBeUndefined();
+    expect(getSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("sends context but omits the screenshot when only Data context is checked", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+    const getSnapshot = vi.fn(() => ({ context: { a: 1 }, instructions: "x" }));
+
+    await render(
+      <AIChatPanel
+        {...defaultProps({ getSnapshot, getCaptureTarget: () => document.body })}
+      />,
+    );
+
+    // Turn off App view, leave Data context on.
+    (
+      page.getByRole("checkbox", { name: "App view" }).element() as HTMLInputElement
+    ).click();
+
+    await fillAndSend("just the numbers please");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBeUndefined();
+    expect(body.context).toEqual({ a: 1 });
+    expect(getSnapshot).toHaveBeenCalled();
   });
 
   it("renders ParamDiffViewer when the response includes suggested_params", async () => {

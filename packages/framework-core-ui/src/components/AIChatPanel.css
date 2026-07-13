@@ -176,11 +176,24 @@
   background-color: var(--background);
 }
 
+.sct-AIChatPanel-context-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 8px 12px 0;
+}
+
+.sct-AIChatPanel-context-toggles-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
 .sct-AIChatPanel-context-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px 0;
   font-size: 12px;
   color: var(--muted-foreground);
   cursor: pointer;
