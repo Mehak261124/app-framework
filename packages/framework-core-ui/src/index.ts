@@ -9,6 +9,7 @@ export {
   useWidgetRegistryInstance,
 } from "./WidgetRegistryContext";
 export { WidgetLoaderProvider } from "./WidgetLoaderContext";
+export { captureView, type CaptureViewOptions } from "./captureView";
 export { useChannel, toPayloadWithHeaders } from "./useChannel";
 export { usePublish } from "./usePublish";
 export { useEventBusStatus } from "./useEventBusStatus";

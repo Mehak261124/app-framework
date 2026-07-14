@@ -11,8 +11,11 @@ export default defineConfig({
     include: [
       "react",
       "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
       "zustand/middleware",
       "recharts",
+      "modern-screenshot",
       "@base-ui/react/input",
       "@base-ui/react/field",
       "@base-ui/react/select",

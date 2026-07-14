@@ -6,6 +6,14 @@ import type React from "react";
 import { AIChatPanel } from "./AIChatPanel";
 import { WidgetRegistry } from "../widgetRegistry";
 import type { ShellLayout } from "../shellTypes";
+import { captureView } from "../captureView";
+
+// Mock the DOM-to-image capture so tests never rasterise a real element.
+// vi.mock is hoisted above every import in this file, so `captureView`
+// resolves to this mock everywhere (here and inside AIChatPanel).
+vi.mock("../captureView", () => ({
+  captureView: vi.fn(async () => "data:image/png;base64,SHOT"),
+}));
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -375,6 +383,72 @@ describe("AIChatPanel", () => {
     expect(body.context_instructions).toBeUndefined();
   });
 
+  it("captures the view and attaches a screenshot when a capture target exists", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+
+    await render(
+      <AIChatPanel {...defaultProps({ getCaptureTarget: () => document.body })} />,
+    );
+    await fillAndSend("what's wrong with this run?");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBe("data:image/png;base64,SHOT");
+
+    // The captured view is shown back as a thumbnail in the user's message.
+    await expect
+      .element(page.getByRole("img", { name: /dashboard view/i }))
+      .toBeInTheDocument();
+  });
+
+  it("shows a note and sends no screenshot when the capture fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+    vi.mocked(captureView).mockRejectedValueOnce(new Error("capture boom"));
+
+    await render(
+      <AIChatPanel {...defaultProps({ getCaptureTarget: () => document.body })} />,
+    );
+    await fillAndSend("look at this");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBeUndefined();
+    await expect
+      .element(page.getByText(/couldn't capture the view/i))
+      .toBeInTheDocument();
+  });
+
+  it("attaches no screenshot when the capture target is absent", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+
+    await render(<AIChatPanel {...defaultProps()} />);
+    await fillAndSend("Add a chart");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBeUndefined();
+  });
+
+  it("does not render the param Approve/Reject UI when suggested_params is empty", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          layout: {},
+          explanation: "just looking",
+          suggested_params: {},
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await render(<AIChatPanel {...defaultProps({ onApproveParams: vi.fn() })} />);
+    await fillAndSend("what's happening?");
+
+    await expect.element(page.getByText("just looking")).toBeInTheDocument();
+    // The empty params object must not produce a diff with dummy buttons.
+    expect(page.getByRole("button", { name: "Approve" }).query()).toBeNull();
+  });
+
   it("forwards the snapshot's context and instructions to every request", async () => {
     vi.mocked(fetch).mockResolvedValue(makeDiagnosisResponse());
     const getSnapshot = vi.fn(() => ({
@@ -400,21 +474,40 @@ describe("AIChatPanel", () => {
     expect(body.currentParams).toBeUndefined();
   });
 
-  it("hides the include-context toggle when getSnapshot is not provided", async () => {
+  it("shows neither toggle when getSnapshot and getCaptureTarget are absent", async () => {
     await render(<AIChatPanel {...defaultProps()} />);
 
-    expect(
-      page.getByRole("checkbox", { name: "Include app context" }).query(),
-    ).toBeNull();
+    expect(page.getByRole("checkbox", { name: "Data context" }).query()).toBeNull();
+    expect(page.getByRole("checkbox", { name: "App view" }).query()).toBeNull();
   });
 
-  it("omits context when the include-context toggle is unchecked", async () => {
+  it("shows only the Data context toggle when only getSnapshot is provided", async () => {
+    await render(<AIChatPanel {...defaultProps({ getSnapshot: vi.fn(() => ({})) })} />);
+
+    await expect
+      .element(page.getByRole("checkbox", { name: "Data context" }))
+      .toBeInTheDocument();
+    expect(page.getByRole("checkbox", { name: "App view" }).query()).toBeNull();
+  });
+
+  it("shows only the App view toggle when only getCaptureTarget is provided", async () => {
+    await render(
+      <AIChatPanel {...defaultProps({ getCaptureTarget: () => document.body })} />,
+    );
+
+    await expect
+      .element(page.getByRole("checkbox", { name: "App view" }))
+      .toBeInTheDocument();
+    expect(page.getByRole("checkbox", { name: "Data context" }).query()).toBeNull();
+  });
+
+  it("omits context when the Data context toggle is unchecked", async () => {
     vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
     const getSnapshot = vi.fn(() => ({ context: { a: 1 }, instructions: "x" }));
 
     await render(<AIChatPanel {...defaultProps({ getSnapshot })} />);
 
-    const toggle = page.getByRole("checkbox", { name: "Include app context" });
+    const toggle = page.getByRole("checkbox", { name: "Data context" });
     await expect.element(toggle).toBeChecked();
     (toggle.element() as HTMLInputElement).click(); // uncheck
 
@@ -425,6 +518,54 @@ describe("AIChatPanel", () => {
     expect(body.context).toBeUndefined();
     expect(body.context_instructions).toBeUndefined();
     expect(getSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("sends the screenshot but omits context when only App view is checked", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+    const getSnapshot = vi.fn(() => ({ context: { a: 1 }, instructions: "x" }));
+
+    await render(
+      <AIChatPanel
+        {...defaultProps({ getSnapshot, getCaptureTarget: () => document.body })}
+      />,
+    );
+
+    // Turn off Data context, leave App view on.
+    (
+      page.getByRole("checkbox", { name: "Data context" }).element() as HTMLInputElement
+    ).click();
+
+    await fillAndSend("look at this");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBe("data:image/png;base64,SHOT");
+    expect(body.context).toBeUndefined();
+    expect(getSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("sends context but omits the screenshot when only Data context is checked", async () => {
+    vi.mocked(fetch).mockResolvedValue(makeSuccessResponse());
+    const getSnapshot = vi.fn(() => ({ context: { a: 1 }, instructions: "x" }));
+
+    await render(
+      <AIChatPanel
+        {...defaultProps({ getSnapshot, getCaptureTarget: () => document.body })}
+      />,
+    );
+
+    // Turn off App view, leave Data context on.
+    (
+      page.getByRole("checkbox", { name: "App view" }).element() as HTMLInputElement
+    ).click();
+
+    await fillAndSend("just the numbers please");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.screenshot).toBeUndefined();
+    expect(body.context).toEqual({ a: 1 });
+    expect(getSnapshot).toHaveBeenCalled();
   });
 
   it("renders ParamDiffViewer when the response includes suggested_params", async () => {
@@ -470,7 +611,9 @@ describe("AIChatPanel", () => {
     domClick("Approve");
 
     expect(onApproveParams).toHaveBeenCalledWith(SUGGESTED_PARAMS);
-    await expect.element(page.getByText("Parameters applied.")).toBeInTheDocument();
+    await expect
+      .element(page.getByText(/Parameters applied.*run again/i))
+      .toBeInTheDocument();
   });
 
   it("does not call onApproveParams when Reject is clicked", async () => {

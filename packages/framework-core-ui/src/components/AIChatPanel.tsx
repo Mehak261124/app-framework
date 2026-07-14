@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Textarea } from "./ui/textarea";
 import { LayoutDiffViewer } from "./LayoutDiffViewer";
 import { ParamDiffViewer } from "./ParamDiffViewer";
+import { captureView } from "../captureView";
 import type { ShellLayout } from "../shellTypes";
 import type { WidgetRegistry, WidgetDefinition } from "../widgetRegistry";
 import "./AIChatPanel.css";
@@ -35,6 +36,10 @@ export interface ChatMessage {
   currentParamsSnapshot?: Record<string, unknown>;
   /** Whether the user approved the suggested params. Undefined until acted on. */
   paramsApproved?: boolean;
+  /** Screenshot (`data:` URL) attached to this user message, if any. */
+  screenshot?: string;
+  /** True when a view capture was attempted for this message but failed. */
+  captureFailed?: boolean;
 }
 
 /** A turn in the conversation history sent to the backend. */
@@ -95,6 +100,15 @@ export interface AIChatPanelProps {
    * entirely when not provided, even if the AI returns `suggested_params`.
    */
   onApproveParams?: (params: Record<string, unknown>) => void;
+  /**
+   * Returns the DOM element to screenshot for the AI (the dashboard's main
+   * content). Provided by {@link ApplicationShell}. When present, an "App view"
+   * checkbox appears; sending a message with it on captures this element and
+   * attaches it so a vision model can reason over what the user sees. The
+   * separate "Data context" checkbox (shown when {@link AIChatPanelProps.getSnapshot}
+   * is provided) independently controls the structured context.
+   */
+  getCaptureTarget?: () => HTMLElement | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -181,6 +195,20 @@ function MessageBubble({
           <p className="sct-AIChatPanel-bubble-text">{message.content}</p>
         )}
 
+        {message.screenshot && (
+          <img
+            className="sct-AIChatPanel-screenshot"
+            src={message.screenshot}
+            alt="Dashboard view sent to the assistant"
+          />
+        )}
+
+        {message.captureFailed && (
+          <p className="sct-AIChatPanel-capture-note">
+            Couldn't capture the view — sent your message without a screenshot.
+          </p>
+        )}
+
         {showDiff && message.proposedLayout && message.layoutExplanation && (
           <div className="sct-AIChatPanel-diff">
             <LayoutDiffViewer
@@ -265,14 +293,20 @@ export function AIChatPanel({
   apiUrl = "/ai/layout",
   getSnapshot,
   onApproveParams,
+  getCaptureTarget,
 }: AIChatPanelProps): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // When the app provides a snapshot, the user can choose per-conversation
-  // whether to include that context with their messages (default: on).
-  const [includeContext, setIncludeContext] = useState(true);
+  // The user can independently pick which extras ride along with a message:
+  // the app's structured data context (from getSnapshot) and/or a screenshot of
+  // the current app view (from getCaptureTarget). Both default on when available.
+  const [includeData, setIncludeData] = useState(true);
+  const [includeView, setIncludeView] = useState(true);
+  // Transient popup shown after approving AI-suggested parameters, prompting the
+  // user to re-run so the change takes effect.
+  const [toast, setToast] = useState<string | null>(null);
 
   /** Only approved turns are forwarded to the AI in subsequent requests. */
   const approvedHistory = useRef<ConversationTurn[]>([]);
@@ -290,11 +324,33 @@ export function AIChatPanel({
     setInput("");
     setError(null);
 
-    const userMsg: ChatMessage = { id: nextId(), role: "user", content: text };
+    // Capture the current dashboard view (best-effort) when "App view" is on,
+    // so the AI can reason over what the user sees. A failed capture falls back
+    // to text/context only.
+    let screenshot: string | undefined;
+    let captureFailed = false;
+    if (includeView && getCaptureTarget) {
+      const target = getCaptureTarget();
+      if (target) {
+        try {
+          screenshot = await captureView(target);
+        } catch {
+          captureFailed = true;
+        }
+      }
+    }
+
+    const userMsg: ChatMessage = {
+      id: nextId(),
+      role: "user",
+      content: text,
+      ...(screenshot && { screenshot }),
+      ...(captureFailed && { captureFailed: true }),
+    };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
-    const snapshot = includeContext ? getSnapshot?.() : undefined;
+    const snapshot = includeData ? getSnapshot?.() : undefined;
 
     try {
       const response = await fetch(apiUrl, {
@@ -309,6 +365,7 @@ export function AIChatPanel({
           ...(snapshot?.instructions !== undefined && {
             context_instructions: snapshot.instructions,
           }),
+          ...(screenshot && { screenshot }),
         }),
       });
 
@@ -339,10 +396,14 @@ export function AIChatPanel({
           proposedLayout: data.layout,
           layoutExplanation: data.explanation,
         }),
-        ...(data.suggested_params && {
-          suggestedParams: data.suggested_params,
-          currentParamsSnapshot: snapshot?.currentParams,
-        }),
+        // Only show the Approve/Reject param UI when the AI actually proposed
+        // parameters — an empty object (common on pure-diagnosis answers) must
+        // not render an empty diff with dummy buttons.
+        ...(data.suggested_params &&
+          Object.keys(data.suggested_params).length > 0 && {
+            suggestedParams: data.suggested_params,
+            currentParamsSnapshot: snapshot?.currentParams,
+          }),
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -389,6 +450,8 @@ export function AIChatPanel({
       prev.map((m) => (m.id === messageId ? { ...m, paramsApproved: true } : m)),
     );
     onApproveParams?.(params);
+    setToast("Parameters applied - run again to see the change take effect.");
+    window.setTimeout(() => setToast(null), 2500);
   }
 
   function handleRejectParams(messageId: string): void {
@@ -411,6 +474,16 @@ export function AIChatPanel({
         className="sct-AIChatPanel-sheet"
         showCloseButton={false}
       >
+        {toast && (
+          <div className="sct-AIChatPanel-toast-overlay">
+            <div className="sct-AIChatPanel-toast" role="status" aria-live="polite">
+              <span aria-hidden className="sct-AIChatPanel-toast-check">
+                ✓
+              </span>
+              {toast}
+            </div>
+          </div>
+        )}
         <SheetHeader className="sct-AIChatPanel-header">
           <SheetTitle>AI Layout Assistant</SheetTitle>
           <Button
@@ -463,16 +536,38 @@ export function AIChatPanel({
         </ScrollArea>
 
         <div className="sct-AIChatPanel-input-area">
-          {getSnapshot && (
-            <label className="sct-AIChatPanel-context-toggle">
-              <input
-                type="checkbox"
-                checked={includeContext}
-                onChange={(e) => setIncludeContext(e.target.checked)}
-                aria-label="Include app context"
-              />
-              Include app context
-            </label>
+          {(getSnapshot || getCaptureTarget) && (
+            <div
+              className="sct-AIChatPanel-context-toggles"
+              role="group"
+              aria-label="Data to send with your message"
+            >
+              <span className="sct-AIChatPanel-context-toggles-label">
+                Send with message:
+              </span>
+              {getSnapshot && (
+                <label className="sct-AIChatPanel-context-toggle">
+                  <input
+                    type="checkbox"
+                    checked={includeData}
+                    onChange={(e) => setIncludeData(e.target.checked)}
+                    aria-label="Data context"
+                  />
+                  Data context
+                </label>
+              )}
+              {getCaptureTarget && (
+                <label className="sct-AIChatPanel-context-toggle">
+                  <input
+                    type="checkbox"
+                    checked={includeView}
+                    onChange={(e) => setIncludeView(e.target.checked)}
+                    aria-label="App view"
+                  />
+                  App view
+                </label>
+              )}
+            </div>
           )}
           <div className="sct-AIChatPanel-input-row">
             <Textarea

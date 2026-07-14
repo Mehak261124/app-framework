@@ -31,15 +31,22 @@ SHELL_LAYOUT_JSON_SCHEMA: dict[str, Any] = json.loads(_SCHEMA_PATH.read_text())
 _MAX_TOOL_ROUNDS = 10
 
 _LAYOUT_SYSTEM_PROMPT = """\
-You are a dashboard layout generator for a simulation framework.
-Your ONLY job is to produce a valid ShellLayout JSON object.
+You are an assistant for a simulation dashboard. You have two equally important
+jobs, and a single request may call for either or both:
+  (A) ANSWER the user's questions about their data and running simulation, and
+      flag anomalies — reasoning over the provided context and any image
+      attached to the message.
+  (B) BUILD or MODIFY the dashboard layout (a ShellLayout JSON object) when the
+      user asks to change what is displayed.
 
 RULES — you must follow all of them:
 1. You may ONLY use widget types from the WIDGET CATALOG below.
    Never invent new widget type names. If no widget fits, leave that region empty.
-2. Your entire response must be a single JSON object with two keys:
-   - "explanation": a short human-readable summary (1-3 sentences) of what you built and why.
-   - "layout": a complete ShellLayout object matching the LAYOUT SCHEMA below.
+2. Your entire response must be a single JSON object. Always include:
+   - "explanation": your answer, or a short (1-3 sentence) summary of what you changed.
+   Include "layout" ONLY when creating or changing the dashboard — a complete
+   ShellLayout object matching the LAYOUT SCHEMA below. A pure answer or
+   diagnosis needs no "layout".
 3. Do not wrap the JSON in markdown code fences.
 4. Do not add any text outside the JSON object.
 5. Every RegionItem must have a unique "id" string.
@@ -95,6 +102,19 @@ guidance above — do not invent values or thresholds that are not present. You 
 may omit "suggested_params" if no parameter fix is needed, and you may omit \
 "layout" entirely if you have no layout change to suggest — a pure diagnosis \
 response needs only "explanation" (and "suggested_params" if applicable).
+"""
+
+# Appended only when the caller attaches a screenshot of the running dashboard.
+# Domain-agnostic: it tells the model to reason over whatever image is provided.
+_SCREENSHOT_SECTION = """
+
+---
+
+A SCREENSHOT of the running dashboard is attached to the user's message. Use it \
+to answer the question and to flag anomalies you can see — unexpected shapes, \
+values crossing limits, oscillation or ringing, error/violation states. Ground \
+your answer in what the image actually shows; do not invent values you cannot \
+see.
 """
 
 # ─── Tool definition ──────────────────────────────────────────────────────────
@@ -246,7 +266,9 @@ async def call_openrouter(
                 f"{OPENROUTER_BASE_URL}/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=30.0,
+                # Vision requests (image payload) and slower/free models can take
+                # a while to first-byte; keep the timeout generous.
+                timeout=90.0,
             )
             response.raise_for_status()
             data = response.json()
@@ -367,6 +389,7 @@ def build_layout_prompt(
     current_layout: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
     context_instructions: str = "",
+    screenshot: str | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble the messages array for a layout generation request.
 
@@ -390,6 +413,10 @@ def build_layout_prompt(
             interpret ``context`` and what parameters ``suggested_params`` may
             change. This is where domain knowledge (data meaning, safe ranges)
             belongs — the framework prompt stays domain-agnostic.
+        screenshot: Optional ``data:image/...;base64,...`` URL of the running
+            dashboard. When provided, the final user message becomes a
+            multimodal ``[text, image_url]`` list so a vision-capable model can
+            reason over what the user sees.
 
     Returns:
         Messages array ready to pass to :func:`call_openrouter`.
@@ -416,13 +443,29 @@ def build_layout_prompt(
         )
         system_content += context_section
 
+    if screenshot:
+        system_content += _SCREENSHOT_SECTION
+
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_content}]
 
     for turn in history or []:
         messages.append({"role": "user", "content": turn["user"]})
         messages.append({"role": "assistant", "content": turn["assistant"]})
 
-    messages.append({"role": "user", "content": user_message})
+    if screenshot:
+        # Multimodal message: the text prompt plus the dashboard image, so a
+        # vision-capable model reasons over what the user sees.
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_message},
+                    {"type": "image_url", "image_url": {"url": screenshot}},
+                ],
+            }
+        )
+    else:
+        messages.append({"role": "user", "content": user_message})
     return messages
 
 
@@ -506,6 +549,7 @@ class LayoutRequest(BaseModel):
     current_layout: dict[str, Any] | None = None
     context: dict[str, Any] = {}
     context_instructions: str = ""
+    screenshot: str | None = None
 
 
 class LayoutResponse(BaseModel):
@@ -571,6 +615,7 @@ def mount_ai_routes(app: FastAPI) -> None:
             current_layout=request.current_layout,
             context=request.context,
             context_instructions=request.context_instructions,
+            screenshot=request.screenshot,
         )
 
         try:
