@@ -111,6 +111,14 @@ export interface ShellClassNames {
  * the {@link AIChatPanel} and its collapse/expand affordance itself — wiring
  * the current layout and apply-layout handler from its own store — so consumer
  * apps don't have to repeat that boilerplate.
+ *
+ * The shell also wires up the **"App view"** toggle: with it on (default),
+ * sending a chat message attaches a screenshot of the dashboard so a
+ * vision-capable model can reason over what the user sees. It sits next to the
+ * **"Data context"** toggle (structured {@link AISnapshot} data); the user picks
+ * either, both, or neither per message. No app wiring is required. Privacy note:
+ * that image is the user's own dashboard and is sent to the configured model
+ * provider, the same as the text context in {@link AISnapshot}.
  */
 export interface ShellAIConfig {
   /** Layout-generation endpoint. Defaults to `"/ai/layout"`. */
@@ -509,6 +517,11 @@ export function ApplicationShell({
             apiUrl={ai.apiUrl}
             getSnapshot={ai.getSnapshot}
             onApproveParams={ai.onApproveParams}
+            // Screenshot the whole dashboard (header, sidebars, main, bottom) —
+            // the chat panel is a sibling of this element, so it is excluded.
+            getCaptureTarget={() =>
+              document.querySelector<HTMLElement>(".sct-ApplicationShell")
+            }
           />
         </>
       )}

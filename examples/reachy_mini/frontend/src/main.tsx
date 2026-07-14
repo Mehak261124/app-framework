@@ -54,9 +54,20 @@ Safety limits: head roll warns above ±30° and violates at ±40°; head height 
 warns above 25 mm and violates at 35 mm; step duration warns below 0.5 s and
 violates at/below 0.3 s.
 
-To fix a violation, advise editing the offending step in the choreography
-widget — reduce its roll/z toward the safe range, or lengthen its duration_s.
-Propose values comfortably within the safe range, not just at the threshold.
+The choreography is defined by per-step values (roll_factor / z_factor /
+duration_s on each step), edited in the ChoreographyFlow widget — there are no
+tunable scalar parameters. So when the run is VIOLATING and the user asks you to
+fix it, return exactly this as suggested_params so they can approve a one-click
+fix:
+
+  "suggested_params": { "preset": "safe" }
+
+Approving that loads the known-safe choreography, so the next run passes;
+rejecting changes nothing. In your explanation, also say which step is unsafe
+and what value would fix it (e.g. "step 0 roll is 42°, past the 40° limit —
+approve to load the Safe preset, or reduce it to ~25° in the widget"). Only
+propose the safe preset when the run is actually violating; for an "ok" run,
+return no suggested_params.
 `.trim();
 
 // Every visual is a widget inside the shell, so the AI assistant (or a future
