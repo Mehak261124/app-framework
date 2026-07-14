@@ -119,12 +119,9 @@ export function createDefaultShellLayout(): ShellLayout {
 
 /**
  * Increment this when the persisted store schema changes in a breaking way.
- * Bumping it runs the store's `migrate` (older versions are converted or reset
- * to the default), so apps don't get a leftover layout from a previous build.
- *
- * Version 7 introduced multiple named {@link LayoutProfile}s: a legacy
- * `{ layout }` state is folded into a single "Default" profile on upgrade.
- * Version 8 switched to freeze-on-save snapshots (working layout kept separate
- * from saved profiles); any older persisted profiles are discarded on upgrade.
+ * Bumping it runs the store's `migrate`, which — since this is a demonstrator
+ * without backward compatibility — simply resets any older persisted data to a
+ * fresh "Default" profile, so apps don't get a leftover layout from a previous
+ * build.
  */
 export const SHELL_LAYOUT_STORAGE_VERSION = 8;

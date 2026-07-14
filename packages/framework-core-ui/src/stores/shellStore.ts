@@ -131,38 +131,19 @@ function createInitialState(): Pick<
   };
 }
 
-/** Legacy (pre-v7) single-layout persisted shape. */
-interface LegacyPersistedState {
-  layout: ShellLayout;
-}
-
 type PersistedShape = Pick<ShellLayoutStore, "profiles" | "activeProfileId">;
-
-function isLegacyState(value: unknown): value is LegacyPersistedState {
-  const v = value as { layout?: unknown } | null;
-  return !!v && typeof v.layout === "object" && v.layout !== null;
-}
 
 /**
  * Migrate a persisted state to the current schema. Only runs when the stored
  * version differs from {@link SHELL_LAYOUT_STORAGE_VERSION} (matching-version
  * data is used as-is).
  *
- * - A legacy `{ layout }` state (≤ v6) is folded into a single "Default" profile.
- * - Anything else (older profile snapshots, unknown version, corrupted) resets
- *   to a fresh Default — a schema bump intentionally discards stale layouts.
- *
- * `workingLayout` is not persisted; it is restored from the active profile in
- * `onRehydrateStorage`.
+ * This is a demonstrator: we don't carry backward compatibility. Any
+ * version mismatch (or corrupted data) simply resets to a fresh "Default"
+ * profile. `workingLayout` is not persisted; it is restored from the active
+ * profile in `onRehydrateStorage`.
  */
-function migrate(persistedState: unknown, version: number): PersistedShape {
-  if (version <= 6 && isLegacyState(persistedState)) {
-    const id = newId();
-    return {
-      profiles: [{ id, name: "Default", layout: persistedState.layout }],
-      activeProfileId: id,
-    };
-  }
+function migrate(): PersistedShape {
   const init = createInitialState();
   return { profiles: init.profiles, activeProfileId: init.activeProfileId };
 }

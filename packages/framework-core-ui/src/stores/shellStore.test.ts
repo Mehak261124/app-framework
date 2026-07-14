@@ -414,7 +414,7 @@ describe("persist — restoring", () => {
 });
 
 describe("persist — migration", () => {
-  it("folds a legacy { layout } state into a single Default profile", async () => {
+  it("resets an older-version state to a fresh Default (no backward compatibility)", async () => {
     setStored({ layout: layoutWithBottom() }, 6);
 
     await useShellLayoutStore.persist.rehydrate();
@@ -422,7 +422,8 @@ describe("persist — migration", () => {
     const state = useShellLayoutStore.getState();
     expect(state.profiles).toHaveLength(1);
     expect(state.profiles[0].name).toBe("Default");
-    expect(selectActiveLayout(state).regions.bottom.visible).toBe(true);
+    // The old { layout } is NOT migrated — it resets to the default layout.
+    expect(selectActiveLayout(state).regions.bottom.visible).toBe(false);
   });
 
   it("falls back to a single Default profile for an unknown version", async () => {
