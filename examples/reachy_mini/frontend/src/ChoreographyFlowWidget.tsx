@@ -13,7 +13,7 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import type { NodeProps, NodeTypes } from "@xyflow/react";
-import { useChannel, usePublish } from "@app-framework/core-ui";
+import { useChannel, useProfileState, usePublish } from "@app-framework/core-ui";
 import type { WidgetDefinition } from "@app-framework/core-ui";
 import "@xyflow/react/dist/style.css";
 import "./ChoreographyFlowWidget.css";
@@ -187,6 +187,23 @@ function ChoreographyFlowInner({
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+
+  // Opt the choreography box positions into layout profiles: dragging a box to
+  // a new spot is captured when a profile is saved, and restored when it's
+  // loaded — the general useProfileState mechanism, one line for this widget.
+  const nodePositions = useMemo(
+    () => Object.fromEntries(nodes.map((n) => [n.id, n.position])),
+    [nodes],
+  );
+  const applyNodePositions = useCallback(
+    (saved: Record<string, { x: number; y: number }>) => {
+      setNodes((nds) =>
+        nds.map((n) => (saved[n.id] ? { ...n, position: saved[n.id] } : n)),
+      );
+    },
+    [setNodes],
+  );
+  useProfileState("choreo.nodePositions", nodePositions, applyNodePositions);
 
   const actions = useMemo<ChoreoActions>(
     () => ({

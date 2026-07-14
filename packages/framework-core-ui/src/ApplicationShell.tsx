@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Group,
+  Panel,
+  Separator,
+  useGroupRef,
+  usePanelRef,
+} from "react-resizable-panels";
 import { mergeClassNames } from "./helpers";
 
-import { useShellLayoutStore } from "./stores/shellStore";
+import {
+  selectActiveLayout,
+  useActiveLayout,
+  useShellLayoutStore,
+} from "./stores/shellStore";
 import { useWidgetRegistryInstance } from "./WidgetRegistryContext";
 import { useWidgetLoader } from "./useWidgetLoader";
 import { AIChatPanel, type AISnapshot } from "./components/AIChatPanel";
@@ -33,12 +43,15 @@ const NON_TOGGLABLE: ReadonlySet<RegionId> = new Set<RegionId>([
 ]);
 
 /**
- * Default expanded sizes for the collapsible regions, as percentage strings
- * (react-resizable-panels v4 treats bare numbers as pixels). Used both as the
- * panels' `defaultSize` and as the size restored when a region is re-expanded.
+ * Default expanded sizes for the collapsible regions, as a percentage. Used both
+ * as the panels' `defaultSize` and as the size a profile restores to when it has
+ * no explicit size of its own (e.g. the untouched "Default" profile).
  */
-const SIDEBAR_DEFAULT_SIZE = "18%";
-const BOTTOM_DEFAULT_SIZE = "20%";
+const SIDEBAR_DEFAULT_PCT = 18;
+const BOTTOM_DEFAULT_PCT = 20;
+// String forms (react-resizable-panels v4 treats a bare number as pixels).
+const SIDEBAR_DEFAULT_SIZE = `${SIDEBAR_DEFAULT_PCT}%`;
+const BOTTOM_DEFAULT_SIZE = `${BOTTOM_DEFAULT_PCT}%`;
 
 /**
  * Width of the thin rail a collapsed sidebar shrinks to when it still holds
@@ -52,6 +65,35 @@ const SIDEBAR_RAIL_SIZE = "32px";
  * toggle bar, so the "Show" control stays reachable after hiding the panel.
  */
 const BOTTOM_RAIL_SIZE = "44px";
+
+/**
+ * Below this percentage a panel is treated as collapsed, so we don't overwrite
+ * a region's persisted expanded size with a near-zero value while it's hidden.
+ */
+const MIN_PERSISTED_SIZE = 5;
+
+/**
+ * Stable panel ids for the resizable groups. Required so a group's layout can
+ * be snapshotted and restored by id (`getLayout`/`setLayout`) rather than by
+ * positional index.
+ */
+const PANEL_ID = {
+  /** The upper content row of the outer vertical group (holds the sidebars + main). */
+  content: "shell-content",
+  /** The bottom panel of the outer vertical group. */
+  bottom: "shell-bottom",
+  /** Left sidebar of the horizontal content group. */
+  sidebarLeft: "shell-sidebar-left",
+  /** Main region of the horizontal content group (absorbs the remainder). */
+  main: "shell-main",
+  /** Right sidebar of the horizontal content group. */
+  sidebarRight: "shell-sidebar-right",
+} as const;
+
+/** A region's persisted size as a percentage string, or the shell default. */
+function sizePct(size: number | undefined, fallback: string): string {
+  return size != null ? `${size}%` : fallback;
+}
 
 /**
  * Ensures non-togglable regions (`header`, `main`, `status-bar`) have
@@ -181,9 +223,14 @@ function ShellLayoutTree({
 }: Pick<ApplicationShellProps, "initialLayout" | "classNames">): React.ReactElement {
   const registry = useWidgetRegistryInstance();
   const isControlled = initialLayout !== undefined;
-  const { layout, setLayout } = useShellLayoutStore();
+  const layout = useActiveLayout();
+  const setLayout = useShellLayoutStore((s) => s.setLayout);
+  const setDefaultLayout = useShellLayoutStore((s) => s.setDefaultLayout);
 
-  // Initialize layout on mount
+  // Register the app's baseline layout on mount. `setDefaultLayout` seeds it
+  // into the active profile only when that profile is still empty (first run),
+  // so profiles restored from localStorage survive reloads, and "Reset to
+  // default" has a real baseline (with widgets) to restore.
   useEffect(() => {
     if (isControlled) {
       const base = createDefaultShellLayout();
@@ -191,7 +238,7 @@ function ShellLayoutTree({
         ...base,
         regions: { ...base.regions, ...initialLayout.regions },
       };
-      useShellLayoutStore.setState({ layout: applyNonTogglableCorrection(merged) });
+      setDefaultLayout(applyNonTogglableCorrection(merged));
     } else {
       // Build layout from registry.
       // TODO: Remove once AI layout generation or layout editor is available.
@@ -212,9 +259,7 @@ function ShellLayoutTree({
         };
       }
 
-      useShellLayoutStore.setState({
-        layout: applyNonTogglableCorrection({ ...base, regions }),
-      });
+      setDefaultLayout(applyNonTogglableCorrection({ ...base, regions }));
     }
   }, []);
 
@@ -266,18 +311,64 @@ function ShellLayoutTree({
   const leftPanelRef = usePanelRef();
   const rightPanelRef = usePanelRef();
   const bottomPanelRef = usePanelRef();
+  // Imperative handles to the two resizable groups, used to snapshot the whole
+  // arrangement (getLayout) and restore it atomically on a profile switch
+  // (setLayout) — far more reliable than resizing panels one at a time.
+  const contentGroupRef = useGroupRef();
+  const bodyGroupRef = useGroupRef();
+
+  const activeProfileId = useShellLayoutStore((s) => s.activeProfileId);
+
+  // Persist a region's live panel size into the active profile so a saved
+  // profile captures not just which regions are visible but how large they are.
+  // Guarded so we skip near-collapsed sizes (keeping the last expanded size) and
+  // avoid redundant writes / feedback loops.
+  const persistRegionSize = useCallback(
+    (id: RegionId, size: number | undefined) => {
+      if (size == null) return;
+      const rounded = Math.round(size);
+      if (rounded < MIN_PERSISTED_SIZE) return;
+      const current = selectActiveLayout(useShellLayoutStore.getState()).regions[id]
+        .size;
+      if (current === rounded) return;
+      setLayout((prev) => ({
+        ...prev,
+        regions: { ...prev.regions, [id]: { ...prev.regions[id], size: rounded } },
+      }));
+    },
+    [setLayout],
+  );
+
+  // Capture live group layouts (fired after every drag settles) into the active
+  // profile. Panel ids map to regions; the flex "main"/"content" panels are the
+  // remainder and aren't stored.
+  const captureContentLayout = useCallback(
+    (l: Record<string, number>) => {
+      persistRegionSize("sidebar-left", l[PANEL_ID.sidebarLeft]);
+      persistRegionSize("sidebar-right", l[PANEL_ID.sidebarRight]);
+    },
+    [persistRegionSize],
+  );
+  const captureBodyLayout = useCallback(
+    (l: Record<string, number>) => {
+      persistRegionSize("bottom", l[PANEL_ID.bottom]);
+    },
+    [persistRegionSize],
+  );
 
   // Sync panel collapse/expand with region.visible toggled by the region
   // buttons. On expand we `resize()` to an explicit percentage rather than
   // `expand()`: the layout hydrates after mount (visible flips false→true), and
   // react-resizable-panels' `expand()` only restores a "most recent size" that
   // doesn't exist yet, landing the panel on its `minSize` sliver. `resize()`
-  // sets a deterministic size and is a no-op when already at that size.
+  // sets a deterministic size and is a no-op when already at that size. The
+  // restored size is the region's persisted size when present, else the default.
   useEffect(() => {
     const p = leftPanelRef.current;
     if (!p) return;
-    if (layout.regions["sidebar-left"].visible) {
-      if (p.isCollapsed()) p.resize(SIDEBAR_DEFAULT_SIZE);
+    const region = layout.regions["sidebar-left"];
+    if (region.visible) {
+      if (p.isCollapsed()) p.resize(sizePct(region.size, SIDEBAR_DEFAULT_SIZE));
     } else if (!p.isCollapsed()) {
       p.collapse();
     }
@@ -286,8 +377,9 @@ function ShellLayoutTree({
   useEffect(() => {
     const p = rightPanelRef.current;
     if (!p) return;
-    if (layout.regions["sidebar-right"].visible) {
-      if (p.isCollapsed()) p.resize(SIDEBAR_DEFAULT_SIZE);
+    const region = layout.regions["sidebar-right"];
+    if (region.visible) {
+      if (p.isCollapsed()) p.resize(sizePct(region.size, SIDEBAR_DEFAULT_SIZE));
     } else if (!p.isCollapsed()) {
       p.collapse();
     }
@@ -296,12 +388,54 @@ function ShellLayoutTree({
   useEffect(() => {
     const p = bottomPanelRef.current;
     if (!p) return;
-    if (layout.regions.bottom.visible) {
-      if (p.isCollapsed()) p.resize(BOTTOM_DEFAULT_SIZE);
+    const region = layout.regions.bottom;
+    if (region.visible) {
+      if (p.isCollapsed()) p.resize(sizePct(region.size, BOTTOM_DEFAULT_SIZE));
     } else if (!p.isCollapsed()) {
       p.collapse();
     }
   }, [layout.regions.bottom.visible]);
+
+  // When the active profile changes, restore each group's arrangement to that
+  // profile's sizes in one atomic `setLayout` call. Keyed on `activeProfileId`
+  // so it fires on a profile switch, not on every drag.
+  //
+  // A *visible* panel is always resized: to the profile's saved size, or — when
+  // the profile has none (e.g. the untouched "Default") — to the shell default.
+  // This is what makes switching back to Default actually shrink a panel the
+  // previous profile had enlarged. A *hidden* panel keeps its current (collapsed)
+  // size so it stays collapsed; the flex panel absorbs the remainder.
+  useEffect(() => {
+    const content = contentGroupRef.current;
+    if (content) {
+      const cur = content.getLayout();
+      const left = layout.regions["sidebar-left"];
+      const right = layout.regions["sidebar-right"];
+      const L = left.visible
+        ? (left.size ?? SIDEBAR_DEFAULT_PCT)
+        : cur[PANEL_ID.sidebarLeft];
+      const R = right.visible
+        ? (right.size ?? SIDEBAR_DEFAULT_PCT)
+        : cur[PANEL_ID.sidebarRight];
+      content.setLayout({
+        [PANEL_ID.sidebarLeft]: L,
+        [PANEL_ID.main]: Math.max(0, 100 - L - R),
+        [PANEL_ID.sidebarRight]: R,
+      });
+    }
+    const body = bodyGroupRef.current;
+    if (body) {
+      const bottom = layout.regions.bottom;
+      if (bottom.visible) {
+        const B = bottom.size ?? BOTTOM_DEFAULT_PCT;
+        body.setLayout({
+          [PANEL_ID.content]: Math.max(0, 100 - B),
+          [PANEL_ID.bottom]: B,
+        });
+      }
+    }
+    // Keyed only on `activeProfileId`: restore on profile switch, not per drag.
+  }, [activeProfileId]);
 
   const regionSetters = useMemo(() => {
     const ids: RegionId[] = [
@@ -336,17 +470,37 @@ function ShellLayoutTree({
 
       {/* Vertical split: content row above, bottom panel below */}
       <Group
+        groupRef={bodyGroupRef}
+        onLayoutChanged={captureBodyLayout}
         orientation="vertical"
         className={mergeClassNames("sct-ApplicationShell-Body", classNames?.content)}
       >
         {/* Sizes are percentage strings: react-resizable-panels v4 treats a
             bare number as pixels, so `18` would mean an 18px sliver, not 18%. */}
-        <Panel minSize="20%" defaultSize="80%">
+        <Panel
+          id={PANEL_ID.content}
+          minSize="20%"
+          defaultSize={sizePct(
+            layout.regions.bottom.size != null
+              ? 100 - layout.regions.bottom.size
+              : undefined,
+            "80%",
+          )}
+        >
           {/* Horizontal split: left sidebar | main | right sidebar */}
-          <Group orientation="horizontal" className="sct-ShellPanelGroup">
+          <Group
+            groupRef={contentGroupRef}
+            onLayoutChanged={captureContentLayout}
+            orientation="horizontal"
+            className="sct-ShellPanelGroup"
+          >
             <Panel
+              id={PANEL_ID.sidebarLeft}
               panelRef={leftPanelRef}
-              defaultSize={SIDEBAR_DEFAULT_SIZE}
+              defaultSize={sizePct(
+                layout.regions["sidebar-left"].size,
+                SIDEBAR_DEFAULT_SIZE,
+              )}
               minSize="12%"
               collapsible
               // A sidebar with widgets collapses to a thin rail that keeps the
@@ -365,7 +519,7 @@ function ShellLayoutTree({
               />
             </Panel>
             <Separator className="sct-PanelHandle sct-PanelHandle--vertical" />
-            <Panel minSize="20%">
+            <Panel id={PANEL_ID.main} minSize="20%">
               <ShellMain
                 region={layout.regions.main}
                 setRegion={regionSetters["main"]}
@@ -374,8 +528,12 @@ function ShellLayoutTree({
             </Panel>
             <Separator className="sct-PanelHandle sct-PanelHandle--vertical" />
             <Panel
+              id={PANEL_ID.sidebarRight}
               panelRef={rightPanelRef}
-              defaultSize={SIDEBAR_DEFAULT_SIZE}
+              defaultSize={sizePct(
+                layout.regions["sidebar-right"].size,
+                SIDEBAR_DEFAULT_SIZE,
+              )}
               minSize="12%"
               collapsible
               collapsedSize={
@@ -397,8 +555,9 @@ function ShellLayoutTree({
         <Separator className="sct-PanelHandle sct-PanelHandle--horizontal" />
 
         <Panel
+          id={PANEL_ID.bottom}
           panelRef={bottomPanelRef}
-          defaultSize={BOTTOM_DEFAULT_SIZE}
+          defaultSize={sizePct(layout.regions.bottom.size, BOTTOM_DEFAULT_SIZE)}
           minSize="8%"
           collapsible
           collapsedSize={BOTTOM_RAIL_SIZE}
@@ -476,7 +635,8 @@ export function ApplicationShell({
   ai,
 }: ApplicationShellProps): React.ReactElement {
   const registry = useWidgetRegistryInstance();
-  const { layout, setLayout } = useShellLayoutStore();
+  const layout = useActiveLayout();
+  const setLayout = useShellLayoutStore((s) => s.setLayout);
   const [chatOpen, setChatOpen] = useState(false);
 
   const tree = (

@@ -1,14 +1,22 @@
 import React, { act } from "react";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { ApplicationShell } from "./ApplicationShell";
 import { createDefaultShellLayout } from "./shellTypes";
 import type { ShellLayout } from "./shellTypes";
+import { clearPersistedLayout } from "./stores/shellStore";
 import { WidgetRegistryContext } from "./WidgetRegistryContext";
 import { WidgetRegistry } from "./widgetRegistry";
 import type { WidgetDefinition } from "./widgetRegistry";
+
+// The layout store is a module singleton shared across tests; reset it so each
+// mount starts from a fresh, empty "Default" profile the shell will seed with
+// the test's initialLayout.
+beforeEach(() => {
+  clearPersistedLayout();
+});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

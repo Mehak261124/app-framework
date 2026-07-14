@@ -1,14 +1,21 @@
 import React, { act } from "react";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { WidgetRegistryContext } from "./WidgetRegistryContext";
 import { WidgetRegistry } from "./widgetRegistry";
 import { ApplicationShell } from "./ApplicationShell";
 import type { ShellLayout } from "./shellTypes";
 import { createDefaultShellLayout } from "./shellTypes";
+import { clearPersistedLayout, useShellLayoutStore } from "./stores/shellStore";
 import type { WidgetDefinition } from "./widgetRegistry";
+
+// The layout store is a module singleton shared across tests; reset it so each
+// test mounts into a fresh, empty "Default" profile that the shell will seed.
+beforeEach(() => {
+  clearPersistedLayout();
+});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +44,80 @@ async function renderShell(registry: WidgetRegistry, initialLayout?: ShellLayout
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe("ApplicationShell layout profiles — size restore", () => {
+  const bottomHeight = () => {
+    const region = page
+      .getByRole("region", { name: "bottom panel", includeHidden: true })
+      .element() as HTMLElement;
+    const panel = region.closest("[data-panel]") as HTMLElement;
+    return panel.getBoundingClientRect().height;
+  };
+
+  function layoutWithBottomSize(size: number | undefined): ShellLayout {
+    const l = createDefaultShellLayout();
+    l.regions.bottom = {
+      visible: true,
+      size,
+      items: [{ id: "Log", type: "Log", props: {} }],
+    };
+    return l;
+  }
+
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+
+  it("restores the bottom panel size when switching profiles", async () => {
+    // The shell takes its height from the consumer app's CSS; replicate that
+    // full-height flex chain here so percentage panel sizes are measurable.
+    const style = document.createElement("style");
+    style.textContent = `
+      .sct-ApplicationShell { height: 600px; display: flex; flex-direction: column; }
+      .sct-ApplicationShell-Body { flex: 1 1 auto; min-height: 0; }
+    `;
+    document.head.appendChild(style);
+
+    const registry = new WidgetRegistry();
+    registry.register(makeWidget("Log", "bottom"));
+    await renderShell(registry, layoutWithBottomSize(20));
+    await settle();
+
+    // Two saved profiles with very different bottom heights, plus a size-less
+    // "Default" that must fall back to the shell default.
+    act(() => {
+      useShellLayoutStore.setState({
+        profiles: [
+          { id: "default", name: "Default", layout: layoutWithBottomSize(undefined) },
+          { id: "big", name: "Big", layout: layoutWithBottomSize(50) },
+          { id: "small", name: "Small", layout: layoutWithBottomSize(10) },
+        ],
+        activeProfileId: "default",
+        workingLayout: layoutWithBottomSize(undefined),
+        defaultLayout: layoutWithBottomSize(undefined),
+      });
+    });
+
+    act(() => useShellLayoutStore.getState().switchProfile("big"));
+    await settle();
+    const big = bottomHeight();
+
+    act(() => useShellLayoutStore.getState().switchProfile("small"));
+    await settle();
+    const small = bottomHeight();
+
+    act(() => useShellLayoutStore.getState().switchProfile("default"));
+    await settle();
+    const dflt = bottomHeight();
+
+    document.head.removeChild(style);
+
+    // The saved sizes must produce visibly different panel heights, and the
+    // size-less "Default" must land between them (its shell-default fallback) —
+    // proof the switch restores real sizes rather than keeping the previous one.
+    expect(big).toBeGreaterThan(small * 2);
+    expect(dflt).toBeGreaterThan(small);
+    expect(dflt).toBeLessThan(big);
+  });
+});
 
 describe("ApplicationShell", () => {
   it("renders all 6 regions when no initialLayout provided and no widgets registered", async () => {
